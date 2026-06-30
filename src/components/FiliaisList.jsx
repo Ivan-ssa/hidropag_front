@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 function FiliaisList() {
   const [filiais, setFiliais] = useState([]);
   //
@@ -16,7 +16,7 @@ function FiliaisList() {
       return;
     }
 
-    axios.get('http://localhost:3000/filiais', {
+    axios.get(`${API_URL}/filiais`, {
       headers: { Authorization: `Bearer ${tokenSalvo}` }
     })
     .then((resposta) => {
