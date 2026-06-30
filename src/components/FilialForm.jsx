@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 function FilialForm() {
   const [nome, setNome] = useState('');
   const [cidade, setCidade] = useState('');
@@ -19,7 +19,7 @@ function FilialForm() {
     const meuToken = localStorage.getItem('tokenHidropag');
 
     // Manda o Token junto na requisição de cadastro (POST)
-    axios.post('http://localhost:3000/filiais', 
+    axios.post(`${API_URL}/filiais`, 
       { nome: nome, cidade: cidade },
       { headers: { Authorization: `Bearer ${meuToken}` } }
     )

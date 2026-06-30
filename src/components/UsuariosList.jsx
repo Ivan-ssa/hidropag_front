@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 function UsuariosList() {
   const [usuarios, setUsuarios] = useState([]);
 
@@ -11,7 +11,7 @@ function UsuariosList() {
   };
 
   const buscarUsuarios = () => {
-    axios.get('http://localhost:3000/usuarios', config)
+    axios.get(`${API_URL}/usuarios`, config)
       .then((resposta) => {
         // 1. Pegamos a lista que veio do banco de dados
         const listaBaguncada = resposta.data;
