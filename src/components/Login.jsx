@@ -2,6 +2,9 @@ import { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
+// 1. Criamos a variável que puxa o link da Vercel ou usa o localhost se estiver no seu PC
+const API_URL = import.meta.env.VITE_API_URL;
+
 function Login() {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
@@ -15,7 +18,8 @@ function Login() {
       return;
     }
 
-    axios.post('http://localhost:3000/usuarios/login', { 
+    // 2. Trocamos o texto fixo por nossa variável dinâmica usando crase (`)
+    axios.post(`${API_URL}/usuarios/login`, { 
       email: email, 
       senha: senha 
     })
@@ -38,7 +42,7 @@ function Login() {
           alert("E-mail ou senha incorretos!");
         }
       });
-  }; // <--- Aqui fechamos a função handleLogin corretamente
+  }; 
 
   return (
     <div style={{ display: 'flex', justifyContent: 'center', marginTop: '50px' }}>
