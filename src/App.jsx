@@ -10,8 +10,8 @@ import FilialForm from "./components/FilialForm";
 import UsuariosList from "./components/UsuariosList";
 import UsuariosCadastro from "./components/UsuariosCadastro";
 
-import ObrasList from './components/ObrasList';
-import ObrasCadastro from './components/ObrasCadastro';
+import ObrasList from "./components/ObrasList";
+import ObrasCadastro from "./components/ObrasCadastro";
 
 // Componente temporário
 function EmConstrucao({ modulo }) {
@@ -165,7 +165,6 @@ function App() {
 
           {/* OBRAS */}
           <Route path="/obras" element={<ObrasList />} />
-
           <Route path="/obras/nova" element={<ObrasCadastro />} />
           
           {/* NOTAS */}
