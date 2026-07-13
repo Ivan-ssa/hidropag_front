@@ -22,7 +22,13 @@ import NotasList from "./components/NotasList";
 import NotasCadastro from "./components/NotasCadastro";
 
 import AprovacoesList from "./components/AprovacoesList";
+import AprovacoesCadastro from "./components/AprovacoesCadastro";
+export const getPerfil = () => localStorage.getItem("usuarioPerfil");
 
+export const temAcesso = (perfisPermitidos) => {
+  const perfilAtual = getPerfil();
+  return perfisPermitidos.includes(perfilAtual);
+};
 // Componente temporário (mantido caso você queira usar no futuro para outras telas)
 function EmConstrucao({ modulo }) {
   return (
@@ -107,10 +113,12 @@ function App() {
 
           {/* APROVAÇÕES */}
           <Route path="/aprovacoes" element={<AprovacoesList />} />
+          <Route path="/aprovacoes/nova" element={<AprovacoesCadastro />} />
         </Route>
 
         {/* Qualquer rota que não exista cai no login (ou no início, se já estiver logado) */}
         <Route path="*" element={<Navigate to="/login" replace />} />
+        
       </Routes>
     </Router>
   );
