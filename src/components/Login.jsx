@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { Droplets, Mail, Lock } from 'lucide-react';
+import { jwtDecode } from "jwt-decode"; // Adicione este import
 
 // 1. Criamos a variável que puxa o link da Vercel ou usa o localhost se estiver no seu PC
 const API_URL = import.meta.env.VITE_API_URL;
@@ -33,16 +34,31 @@ function Login() {
       email: email, 
       senha: senha 
     })
-      .then((resposta) => {
-        // A variável correta agora é tokenRecebido
-        const tokenRecebido = resposta.data.token;
+    .then((resposta) => {
+      const tokenRecebido = resposta.data.token;
+      
+      // 1. Decodifica o token para pegar o ID que você já colocou lá dentro
+      const decoded = jwtDecode(tokenRecebido);
+      
+      // 2. Salva o token E o ID no localStorage
+      localStorage.setItem('tokenHidropag', tokenRecebido);
+      localStorage.setItem('usuarioId', decoded.id); // 'id' é o nome da chave que você usou no JWT
+      localStorage.setItem("usuarioNome", decoded.nome);
+      localStorage.setItem("usuarioPerfil", decoded.perfil.nome);
+
+      alert(`Bem-vindo, ${decoded.nome}! Perfil: ${decoded.perfil.nome}`);
+      navigate("/");
+    })
+      // .then((resposta) => {
+      //   // A variável correta agora é tokenRecebido
+      //   const tokenRecebido = resposta.data.token;
         
-        // Guardando no cofre do navegador
-        localStorage.setItem('tokenHidropag', tokenRecebido);
+      //   // Guardando no cofre do navegador
+      //   localStorage.setItem('tokenHidropag', tokenRecebido);
         
-        alert("Login realizado com sucesso!");
-        navigate('/');
-      })
+      //   alert("Login realizado com sucesso!");
+      //   navigate('/');
+      // })
       .catch((erro) => {
         console.error("🔍 Erro ao logar:", erro.response);
         

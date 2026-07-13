@@ -1,253 +1,140 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Pencil, X, Filter, RotateCcw, Search, FileText } from "lucide-react";
+import { Clock, Check, X, FileText, Search, RotateCcw } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
-function AprovacoesList() {
-  const [aprovacoes, setAprovacoes] = useState([]);
-  const [aprovacaoEditando, setAprovacaoEditando] = useState(null);
-
-  // Estados dos filtros
-  const [filtroDecisao, setFiltroDecisao] = useState("");
+function AprovacoesPendenteList() {
+  const [notas, setNotas] = useState([]);
+  const [notaVisualizando, setNotaVisualizando] = useState(null);
+  const [observacao, setObservacao] = useState("");
   const [busca, setBusca] = useState("");
 
-  const config = {
-    headers: { Authorization: `Bearer ${localStorage.getItem("tokenHidropag")}` },
+  const usuarioId = localStorage.getItem("usuarioId");
+  const config = { headers: { Authorization: `Bearer ${localStorage.getItem("tokenHidropag")}` } };
+
+  const carregarPendentes = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/notas`, config);
+      // Filtra apenas as pendentes (status 0)
+      setNotas(res.data.filter(n => n.status === 0));
+    } catch (err) {
+      console.error("Erro ao buscar pendentes:", err);
+    }
   };
 
-  function carregarDados() {
-    axios.get(`${API_URL}/aprovacoes`, config)
-      .then(res => setAprovacoes(res.data))
-      .catch(err => console.error(err));
-  }
+  useEffect(() => { carregarPendentes(); }, []);
 
-  useEffect(() => {
-    carregarDados();
-  }, []);
+  const processarParecer = async (decisao) => {
+    try {
+      // O payload agora segue exatamente o formato que o seu DTO exige
+      const payloadAprovacao = {
+        decisao: Number(decisao),
+        observacao: observacao,
+        nota: notaVisualizando.id,      // Deve ser apenas a string UUID
+        usuario: Number(usuarioId)     // Deve ser apenas o número inteiro
+      };
 
-  // --- FILTRAGEM NA TELA ---
-  const aprovacoesFiltradas = aprovacoes.filter(aprovacao => {
-    const bateDecisao = filtroDecisao === "" || aprovacao.decisao?.toString() === filtroDecisao;
+      console.log("Enviando para o banco:", payloadAprovacao);
 
-    const termo = busca.trim().toLowerCase();
-    const bateBusca =
-      termo === "" ||
-      aprovacao.nota?.numero_nf?.toString().includes(termo) ||
-      aprovacao.usuario?.nome?.toLowerCase().includes(termo);
-
-    return bateDecisao && bateBusca;
-  });
-
-  // --- FUNÇÕES DO MODAL DE EDIÇÃO ---
-  function abrirModal(aprovacao) {
-    setAprovacaoEditando({ ...aprovacao });
-  }
-
-  function handleEditChange(e) {
-    const { name, value } = e.target;
-    setAprovacaoEditando(prev => ({ ...prev, [name]: value }));
-  }
-
-  function salvarEdicao(e) {
-    e.preventDefault();
-
-    const payload = {
-      decisao: Number(aprovacaoEditando.decisao),
-      observacao: aprovacaoEditando.observacao || "",
-    };
-
-    axios.put(`${API_URL}/aprovacoes/${aprovacaoEditando.id}`, payload, config)
-      .then(() => {
-        alert("Aprovação atualizada!");
-        setAprovacaoEditando(null);
-        carregarDados();
-      })
-      .catch((erro) => {
-        console.error(erro);
-        alert("Erro ao atualizar a aprovação. Verifique os logs.");
-      });
-  }
-
-  // Badge da decisão
-  const renderDecisao = (decisao) => {
-    if (decisao === 1) return <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold text-white bg-success-500">APROVADO</span>;
-    if (decisao === 2) return <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold text-white bg-danger-500">REPROVADO</span>;
-    return <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold text-white bg-slate-400">-</span>;
+      // 1. POST na rota de aprovações
+      await axios.post(`${API_URL}/aprovacoes`, payloadAprovacao, config);
+      
+      // 2. PUT na nota para atualizar o status
+      await axios.put(`${API_URL}/notas/${notaVisualizando.id}`, { 
+        status: Number(decisao) 
+      }, config);
+      
+      alert("Parecer registrado com sucesso!");
+      setNotaVisualizando(null);
+      setObservacao("");
+      carregarPendentes();
+    } catch (err) {
+      console.error("Erro no POST:", err.response?.data);
+      alert("Erro ao gravar aprovação: " + JSON.stringify(err.response?.data?.message || err.message));
+    }
   };
 
-  const inputCls = "w-full px-3 py-2 mt-1 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-flow-400 focus:border-transparent";
-  const labelCls = "text-xs font-semibold text-slate-600";
+  const notasFiltradas = notas.filter(n => 
+    n.numero_nf?.toString().includes(busca) || 
+    n.fornecedor?.toLowerCase().includes(busca.toLowerCase())
+  );
 
   return (
-    <div>
-      {/* BARRA DE FILTROS */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 mb-5 flex gap-5 items-center flex-wrap">
-        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-          <Filter className="w-4 h-4 text-flow-500" />
-          Filtros:
-        </span>
+    <div className="p-6">
+      <h2 className="text-xl font-bold mb-6 text-slate-800 flex items-center gap-2">
+        <Clock className="w-6 h-6 text-amber-500" /> Aprovação de Notas (Pendentes)
+      </h2>
 
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden mb-6">
+        <div className="p-4 border-b border-slate-100 flex items-center gap-4">
+          <Search className="w-4 h-4 text-slate-400" />
+          <input 
+            className="text-sm outline-none flex-1"
+            placeholder="Buscar nota pendente..."
             value={busca}
-            onChange={e => setBusca(e.target.value)}
-            placeholder="Buscar por NF ou usuário..."
-            className="pl-8 pr-3 py-1.5 text-sm rounded-md border border-slate-300 focus:outline-none focus:ring-2 focus:ring-flow-400 w-56"
+            onChange={(e) => setBusca(e.target.value)}
           />
         </div>
-
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-slate-600">Decisão:</label>
-          <select
-            value={filtroDecisao}
-            onChange={e => setFiltroDecisao(e.target.value)}
-            className="px-2.5 py-1.5 text-sm rounded-md border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-flow-400"
-          >
-            <option value="">Todas</option>
-            <option value="1">Aprovadas</option>
-            <option value="2">Reprovadas</option>
-          </select>
-        </div>
-
-        <button
-          onClick={() => { setFiltroDecisao(""); setBusca(""); }}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          Limpar Filtros
-        </button>
-
-        <span className="ml-auto text-sm text-slate-400">
-          {aprovacoesFiltradas.length} registro{aprovacoesFiltradas.length !== 1 ? "s" : ""}
-        </span>
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className="px-4 py-3 text-left">NF</th>
+              <th className="px-4 py-3 text-left">Fornecedor</th>
+              <th className="px-4 py-3 text-right">Valor</th>
+              <th className="px-4 py-3 text-center">Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {notasFiltradas.map(n => (
+              <tr key={n.id} className="border-t border-slate-100 hover:bg-slate-50">
+                <td className="px-4 py-3 font-semibold text-slate-800">{n.numero_nf}</td>
+                <td className="px-4 py-3 text-slate-600">{n.fornecedor}</td>
+                <td className="px-4 py-3 text-right font-medium text-slate-700">R$ {Number(n.valor_total).toFixed(2)}</td>
+                <td className="px-4 py-3 text-center">
+                  <button 
+                    onClick={() => setNotaVisualizando(n)}
+                    className="px-3 py-1 bg-flow-500 text-white rounded-md text-xs font-bold hover:bg-flow-600"
+                  >
+                    Analisar
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {/* TABELA */}
-      {aprovacoesFiltradas.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-500 text-sm">
-          Nenhuma aprovação encontrada.
-        </div>
-      ) : (
-        <div className="overflow-x-auto bg-white border border-slate-200 rounded-xl shadow-sm">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-ink-800 text-white text-left">
-                <th className="px-4 py-3 font-medium">Nota Fiscal</th>
-                <th className="px-4 py-3 font-medium">Usuário</th>
-                <th className="px-4 py-3 font-medium text-center">Decisão</th>
-                <th className="px-4 py-3 font-medium">Observação</th>
-                <th className="px-4 py-3 font-medium">Decidido em</th>
-                <th className="px-4 py-3 font-medium text-center">Ações</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {aprovacoesFiltradas.map((aprovacao) => (
-                <tr key={aprovacao.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-1.5 font-semibold text-slate-800">
-                      <FileText className="w-3.5 h-3.5 text-slate-400" />
-                      {aprovacao.nota?.numero_nf || "-"}
-                    </span>
-                    <p className="text-xs text-slate-400">{aprovacao.nota?.fornecedor || "Sem fornecedor"}</p>
-                  </td>
-
-                  <td className="px-4 py-3 text-slate-600">{aprovacao.usuario?.nome || "-"}</td>
-
-                  <td className="px-4 py-3 text-center">
-                    {renderDecisao(aprovacao.decisao)}
-                  </td>
-
-                  <td className="px-4 py-3 text-slate-600 max-w-xs truncate" title={aprovacao.observacao}>
-                    {aprovacao.observacao || "-"}
-                  </td>
-
-                  <td className="px-4 py-3 text-slate-600">
-                    {aprovacao.decidido_em
-                      ? new Date(aprovacao.decidido_em).toLocaleString('pt-BR')
-                      : "-"}
-                  </td>
-
-                  <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => abrirModal(aprovacao)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-md bg-flow-500 hover:bg-flow-600 text-white transition-colors"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                      Editar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* MODAL DE EDIÇÃO */}
-      {aprovacaoEditando && (
-        <div className="fixed inset-0 w-screen h-screen bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-[1000] p-4">
-          <div className="bg-white rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-xl">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-              <h3 className="font-display font-semibold text-slate-800">
-                Editar Aprovação — NF {aprovacaoEditando.nota?.numero_nf}
-              </h3>
-              <button onClick={() => setAprovacaoEditando(null)} className="text-slate-400 hover:text-slate-600">
-                <X className="w-5 h-5" />
-              </button>
+      {/* Modal de Análise */}
+      {notaVisualizando && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex justify-center items-center z-[1100] p-4">
+          <div className="bg-white rounded-xl w-full max-w-5xl h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex justify-between items-center px-6 py-4 border-b">
+              <h3 className="font-bold text-lg">NF {notaVisualizando.numero_nf} - {notaVisualizando.fornecedor}</h3>
+              <button onClick={() => setNotaVisualizando(null)} className="text-slate-500 hover:text-black font-bold">FECHAR</button>
             </div>
-
-            <form onSubmit={salvarEdicao} className="p-5">
-              <div className="mb-3">
-                <label className={labelCls}>Fornecedor:</label>
-                <p className="text-sm text-slate-700 mt-1">{aprovacaoEditando.nota?.fornecedor || "-"}</p>
+            <div className="flex flex-1 overflow-hidden">
+              <div className="w-2/3 bg-slate-100">
+                <iframe src={`${notaVisualizando.link_pdf}#toolbar=0`} className="w-full h-full" />
               </div>
-
-              <div className="mb-3">
-                <label className={labelCls}>Usuário responsável:</label>
-                <p className="text-sm text-slate-700 mt-1">{aprovacaoEditando.usuario?.nome || "-"}</p>
+              <div className="w-1/3 p-6 flex flex-col gap-4 bg-slate-50">
+                <label className="text-xs font-bold uppercase text-slate-500">Parecer:</label>
+                <textarea 
+                  className="w-full p-3 border rounded-lg text-sm h-32"
+                  placeholder="Escreva sua observação aqui..."
+                  value={observacao}
+                  onChange={(e) => setObservacao(e.target.value)}
+                />
+                <div className="flex gap-2 mt-auto">
+                  <button onClick={() => processarParecer(2)} className="flex-1 bg-danger-500 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2">
+                    <X className="w-4 h-4" /> Reprovar
+                  </button>
+                  <button onClick={() => processarParecer(1)} className="flex-1 bg-success-500 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2">
+                    <Check className="w-4 h-4" /> Aprovar
+                  </button>
+                </div>
               </div>
-
-              <label className={labelCls}>Decisão:</label>
-              <select
-                name="decisao"
-                value={aprovacaoEditando.decisao}
-                onChange={handleEditChange}
-                className={`${inputCls} bg-white mb-3`}
-              >
-                <option value="1">Aprovado</option>
-                <option value="2">Reprovado</option>
-              </select>
-
-              <label className={labelCls}>Observação:</label>
-              <textarea
-                name="observacao"
-                value={aprovacaoEditando.observacao || ''}
-                onChange={handleEditChange}
-                rows={4}
-                className={`${inputCls} resize-none`}
-                placeholder="Ex: Valor de acordo com o contrato"
-              />
-
-              <div className="flex justify-end gap-2 mt-5">
-                <button
-                  type="button"
-                  onClick={() => setAprovacaoEditando(null)}
-                  className="px-4 py-2 text-sm rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-flow-500 hover:bg-flow-600 text-white transition-colors"
-                >
-                  Salvar Alterações
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
@@ -255,4 +142,4 @@ function AprovacoesList() {
   );
 }
 
-export default AprovacoesList;
+export default AprovacoesPendenteList;

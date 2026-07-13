@@ -5,8 +5,27 @@ import { Save } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+// --- FUNÇÕES DE MÁSCARA (Apenas para o visual do usuário) ---
+const maskCNPJ = (value) => {
+  if (!value) return "";
+  return value
+    .replace(/\D/g, '')
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2')
+    .slice(0, 18);
+};
+
+const maskCEP = (value) => {
+  if (!value) return "";
+  return value
+    .replace(/\D/g, '')
+    .replace(/^(\d{5})(\d)/, '$1-$2')
+    .slice(0, 9);
+};
+
 function FilialForm() {
-  // Substituímos os vários states por um único objeto para facilitar
   const [filial, setFilial] = useState({
     nome: '',
     cnpj: '',
@@ -16,19 +35,55 @@ function FilialForm() {
     logradouro: '',
     numero: ''
   });
-
+  
+  const [buscandoCep, setBuscandoCep] = useState(false);
   const navigate = useNavigate();
 
-  // Função única que lida com a digitação em qualquer campo
+  // Função única que lida com a digitação e aplica as máscaras
   const handleChange = (e) => {
-    const { name, value } = e.target;
+    let { name, value } = e.target;
+
+    if (name === 'cnpj') value = maskCNPJ(value);
+    if (name === 'cep') value = maskCEP(value);
+
     setFilial((estadoAnterior) => ({
       ...estadoAnterior,
       [name]: value
     }));
   };
 
-  const handleSubmit = (e) => {
+  // --- BUSCA DE CEP AUTOMÁTICA ---
+  const handleCepBlur = async () => {
+    if (!filial.cep) return;
+    
+    const cepLimpo = filial.cep.replace(/\D/g, ''); 
+    
+    if (cepLimpo.length === 8) {
+      setBuscandoCep(true);
+      try {
+        const { data } = await axios.get(`https://viacep.com.br/ws/${cepLimpo}/json/`);
+        
+        if (data.erro) {
+          alert("CEP não encontrado!");
+        } else {
+          setFilial(prev => ({
+            ...prev,
+            logradouro: data.logradouro || prev.logradouro,
+            cidade: data.localidade || prev.cidade,
+            uf: data.uf || prev.uf
+          }));
+        }
+      } catch (error) {
+        console.error("Erro ao buscar ViaCEP:", error);
+        alert("Erro ao consultar o CEP.");
+      } finally {
+        setBuscandoCep(false);
+      }
+    }
+  };
+
+  // --- ENVIO DOS DADOS (POST) ---
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     // Validação básica
@@ -37,25 +92,43 @@ function FilialForm() {
       return;
     }
 
+    // Limpa a formatação, garantindo que envie NULL se estiver vazio para o banco
+    let cnpjLimpo = filial.cnpj ? String(filial.cnpj).replace(/\D/g, '') : null;
+    if (cnpjLimpo === "") cnpjLimpo = null;
+
+    let cepLimpo = filial.cep ? String(filial.cep).replace(/\D/g, '') : null;
+    if (cepLimpo === "") cepLimpo = null;
+
+    // Objeto limpo, respeitando as colunas da Entidade Filiais
+    const dadosParaCriar = {
+      nome: filial.nome,
+      cidade: filial.cidade,
+      uf: filial.uf || null,
+      cep: cepLimpo,
+      logradouro: filial.logradouro || null,
+      numero: filial.numero || null,
+      cnpj: cnpjLimpo
+    };
+
     const meuToken = localStorage.getItem('tokenHidropag');
 
-    // Manda o objeto 'filial' inteiro no corpo da requisição
-    axios.post(`${API_URL}/filiais`, 
-      filial,
-      { headers: { Authorization: `Bearer ${meuToken}` } }
-    )
-      .then(() => {
-        alert("Filial cadastrada com sucesso!");
-        navigate('/filiais');
-      })
-      .catch((erro) => {
-        console.error("Erro ao cadastrar:", erro);
-        if (erro.response && erro.response.status === 401) {
-          alert("Erro: Você precisa fazer Login primeiro!");
-        } else {
-          alert("Ocorreu um erro ao cadastrar a filial. Verifique as permissões.");
-        }
+    try {
+      await axios.post(`${API_URL}/filiais`, dadosParaCriar, {
+        headers: { Authorization: `Bearer ${meuToken}` }
       });
+      alert("Filial cadastrada com sucesso!");
+      navigate('/filiais'); // Redireciona de volta para a lista
+    } catch (erro) {
+      console.error("Erro ao cadastrar:", erro);
+      if (erro.response && erro.response.status === 401) {
+        alert("Erro: Você precisa fazer Login primeiro!");
+      } else if (erro.response && erro.response.data) {
+        const msg = erro.response.data.message || "Erro interno do servidor.";
+        alert("Erro do servidor: " + JSON.stringify(msg));
+      } else {
+        alert("Ocorreu um erro ao cadastrar a filial.");
+      }
+    }
   };
 
   // Classes padrão para reaproveitar nos inputs
@@ -77,6 +150,7 @@ function FilialForm() {
               onChange={handleChange}
               placeholder="Ex: Filial Centro"
               className={inputCls}
+              required
             />
           </div>
 
@@ -88,6 +162,20 @@ function FilialForm() {
               value={filial.cnpj}
               onChange={handleChange}
               placeholder="Ex: 00.000.000/0000-00"
+              className={inputCls}
+            />
+          </div>
+
+          {/* CEP */}
+          <div>
+            <label className={labelCls}>CEP: {buscandoCep && <span className="text-flow-500 text-[10px] ml-2">(Buscando...)</span>}</label>
+            <input
+              type="text"
+              name="cep"
+              value={filial.cep}
+              onChange={handleChange}
+              onBlur={handleCepBlur}
+              placeholder="Ex: 90000-000"
               className={inputCls}
             />
           </div>
@@ -117,18 +205,6 @@ function FilialForm() {
             />
           </div>
 
-          <div>
-            <label className={labelCls}>CEP: </label>
-            <input
-              type="text"
-              name="cep"
-              value={filial.cep}
-              onChange={handleChange}
-              placeholder="Ex: 90000-000"
-              className={inputCls}
-            />
-          </div>
-
           {/* CIDADE E UF */}
           <div>
             <label className={labelCls}>Cidade: *</label>
@@ -139,6 +215,7 @@ function FilialForm() {
               onChange={handleChange}
               placeholder="Ex: Porto Alegre"
               className={inputCls}
+              required
             />
           </div>
 
@@ -171,81 +248,3 @@ function FilialForm() {
 }
 
 export default FilialForm;
-
-
-
-// import { useState } from 'react';
-// import axios from 'axios';
-// import { useNavigate } from 'react-router-dom';
-// const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-// function FilialForm() {
-//   const [nome, setNome] = useState('');
-//   const [cidade, setCidade] = useState('');
-//   const navigate = useNavigate();
-
-//   const handleSubmit = (e) => {
-//     e.preventDefault();
-
-//     if (!nome || !cidade) {
-//       alert("Por favor, preencha o Nome e a Cidade da filial!");
-//       return;
-//     }
-
-//     // PEGA O TOKEN DO COFRE DO NAVEGADOR
-//     const meuToken = localStorage.getItem('tokenHidropag');
-
-//     // Manda o Token junto na requisição de cadastro (POST)
-//     axios.post(`${API_URL}/filiais`, 
-//       { nome: nome, cidade: cidade },
-//       { headers: { Authorization: `Bearer ${meuToken}` } }
-//     )
-//       .then(() => {
-//         alert("Filial cadastrada com sucesso!");
-//         navigate('/filiais');
-//       })
-//       .catch((erro) => {
-//         console.error("Erro ao cadastrar:", erro);
-//         if (erro.response && erro.response.status === 401) {
-//           alert("Erro: Você precisa fazer Login primeiro!");
-//         } else {
-//           alert("Ocorreu um erro ao cadastrar a filial. Verifique as permissões.");
-//         }
-//       });
-//   };
-
-//   return (
-//     <div style={{ padding: '20px' }}>
-//       <h3>Cadastrar Nova Filial</h3>
-//       <form onSubmit={handleSubmit} style={{ marginTop: '20px' }}>
-        
-//         <div style={{ marginBottom: '15px' }}>
-//           <label style={{ display: 'block', marginBottom: '5px' }}>Nome da Filial: </label>
-//           <input
-//             type="text"
-//             value={nome}
-//             onChange={(e) => setNome(e.target.value)}
-//             placeholder="Ex: Filial Centro"
-//             style={{ width: '100%', padding: '8px', maxWidth: '400px' }}
-//           />
-//         </div>
-
-//         <div style={{ marginBottom: '15px' }}>
-//           <label style={{ display: 'block', marginBottom: '5px' }}>Cidade: </label>
-//           <input
-//             type="text"
-//             value={cidade}
-//             onChange={(e) => setCidade(e.target.value)}
-//             placeholder="Ex: Porto Alegre"
-//             style={{ width: '100%', padding: '8px', maxWidth: '400px' }}
-//           />
-//         </div>
-
-//         <button type="submit" style={{ padding: '10px 15px', backgroundColor: '#28a745', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '4px' }}>
-//           Salvar Filial
-//         </button>
-//       </form>
-//     </div>
-//   );
-// }
-
-// export default FilialForm;

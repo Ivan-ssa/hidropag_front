@@ -15,14 +15,6 @@ import {
 // Estrutura de navegação: cada grupo tem um ícone + rótulo + sublinks (listar/cadastrar)
 const grupos = [
   {
-    label: "Filiais",
-    icon: Building2,
-    links: [
-      { to: "/filiais", label: "Listar Filiais", icon: List },
-      { to: "/filiais/nova", label: "Cadastrar Filial", icon: PlusCircle },
-    ],
-  },
-  {
     label: "Usuários",
     icon: Users,
     links: [
@@ -30,6 +22,15 @@ const grupos = [
       { to: "/usuarios/novo", label: "Cadastrar Usuário", icon: PlusCircle },
     ],
   },
+  {
+    label: "Filiais",
+    icon: Building2,
+    links: [
+      { to: "/filiais", label: "Listar Filiais", icon: List },
+      { to: "/filiais/nova", label: "Cadastrar Filial", icon: PlusCircle },
+    ],
+  },
+  
   {
     label: "Obras",
     icon: HardHat,
@@ -50,7 +51,8 @@ const grupos = [
     label: "Aprovações",
     icon: CheckSquare,
     links: [
-      { to: "/aprovacoes", label: "Listar Aprovações", icon: List },
+      { to: "/aprovacoes", label: "Aprovar", icon: List },
+      { to: "/aprovacoes/nova", label: "Listar ", icon: List },
     ],
   },
 ];

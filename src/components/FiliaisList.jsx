@@ -5,13 +5,32 @@ import { Plus, Pencil, Trash2, X } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+// --- FUNÇÕES DE MÁSCARA (Ficam fora do componente) ---
+const maskCNPJ = (value) => {
+  if (!value) return "";
+  return value
+    .replace(/\D/g, '')
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2')
+    .slice(0, 18);
+};
+
+const maskCEP = (value) => {
+  if (!value) return "";
+  return value
+    .replace(/\D/g, '')
+    .replace(/^(\d{5})(\d)/, '$1-$2')
+    .slice(0, 9);
+};
+
 function FiliaisList() {
   const [filiais, setFiliais] = useState([]);
-  
-  // Estado para controlar a filial que está sendo editada (se null, o modal fica fechado)
   const [filialEditando, setFilialEditando] = useState(null);
+  const [buscandoCep, setBuscandoCep] = useState(false);
 
-  const buscarFiliais = () => {
+  const buscarFiliais = async () => {
     const tokenSalvo = localStorage.getItem('tokenHidropag');
 
     if (!tokenSalvo) {
@@ -19,16 +38,15 @@ function FiliaisList() {
       return;
     }
 
-    axios.get(`${API_URL}/filiais`, {
-      headers: { Authorization: `Bearer ${tokenSalvo}` }
-    })
-    .then((resposta) => {
+    try {
+      const resposta = await axios.get(`${API_URL}/filiais`, {
+        headers: { Authorization: `Bearer ${tokenSalvo}` }
+      });
       setFiliais(resposta.data);
-    })
-    .catch((erro) => {
+    } catch (erro) {
       console.error("Erro na requisição:", erro);
       alert("Erro ao buscar: " + erro.message);
-    });
+    }
   };
 
   useEffect(() => {
@@ -36,42 +54,72 @@ function FiliaisList() {
   }, []);
 
   // FUNÇÃO PARA DELETAR
-  const deletarFilial = (id, nome) => {
+  const deletarFilial = async (id, nome) => {
     const tokenSalvo = localStorage.getItem('tokenHidropag');
     if (window.confirm(`Tem certeza que deseja excluir a filial "${nome}"?`)) {
-      axios.delete(`${API_URL}/filiais/${id}`, {
-        headers: { Authorization: `Bearer ${tokenSalvo}` }
-      })
-      .then(() => {
+      try {
+        await axios.delete(`${API_URL}/filiais/${id}`, {
+          headers: { Authorization: `Bearer ${tokenSalvo}` }
+        });
         alert("Filial excluída com sucesso!");
         buscarFiliais();
-      })
-      .catch((erro) => {
+      } catch (erro) {
         console.error("Erro ao deletar:", erro);
         alert("Erro ao deletar a filial.");
-      });
+      }
     }
   };
 
   // --- FUNÇÕES DE EDIÇÃO ---
-
-  // 1. Abre o modal e coloca os dados da filial clicada no estado
   const abrirModalEdicao = (filial) => {
     setFilialEditando(filial);
   };
 
-  // 2. Atualiza os campos do formulário de edição conforme o usuário digita
   const handleEditChange = (e) => {
-    const { name, value, type, checked } = e.target;
+    let { name, value, type, checked } = e.target;
+
+    // Aplica as máscaras visualmente enquanto o usuário digita
+    if (name === 'cnpj') value = maskCNPJ(value);
+    if (name === 'cep') value = maskCEP(value);
+
     setFilialEditando((prev) => ({
       ...prev,
-      // Se for um checkbox, pega se tá marcado (checked), se não, pega o texto (value)
       [name]: type === 'checkbox' ? checked : value
     }));
   };
 
-  // 3. Envia os dados atualizados para a API
-  const salvarEdicao = (e) => {
+  // --- BUSCA DE CEP AUTOMÁTICA ---
+  const handleCepBlur = async () => {
+    if (!filialEditando?.cep) return;
+    
+    const cepLimpo = filialEditando.cep.replace(/\D/g, ''); 
+    
+    if (cepLimpo.length === 8) {
+      setBuscandoCep(true);
+      try {
+        const { data } = await axios.get(`https://viacep.com.br/ws/${cepLimpo}/json/`);
+        
+        if (data.erro) {
+          alert("CEP não encontrado!");
+        } else {
+          setFilialEditando(prev => ({
+            ...prev,
+            logradouro: data.logradouro || prev.logradouro,
+            cidade: data.localidade || prev.cidade,
+            uf: data.uf || prev.uf
+          }));
+        }
+      } catch (error) {
+        console.error("Erro ao buscar ViaCEP:", error);
+        alert("Erro ao consultar o CEP.");
+      } finally {
+        setBuscandoCep(false);
+      }
+    }
+  };
+
+  // --- FUNÇÃO DE SALVAR CORRIGIDA E ALINHADA COM O BACKEND ---
+  const salvarEdicao = async (e) => {
     e.preventDefault();
     const tokenSalvo = localStorage.getItem('tokenHidropag');
 
@@ -80,37 +128,37 @@ function FiliaisList() {
       return;
     }
 
-    // Objeto limpo apenas com os dados que a API aceita
+    // Limpa a formatação, garantindo que envie NULL se estiver vazio (evita erro de UNIQUE no banco)
+    let cnpjLimpo = filialEditando.cnpj ? String(filialEditando.cnpj).replace(/\D/g, '') : null;
+    if (cnpjLimpo === "") cnpjLimpo = null;
+
+    let cepLimpo = filialEditando.cep ? String(filialEditando.cep).replace(/\D/g, '') : null;
+    if (cepLimpo === "") cepLimpo = null;
+
+    // JSON montado estritamente com as colunas da sua Entidade TypeORM (email_contato e ativo removidos)
     const dadosParaAtualizar = {
       nome: filialEditando.nome,
-      cnpj: filialEditando.cnpj || null,
       cidade: filialEditando.cidade,
       uf: filialEditando.uf || null,
-      cep: filialEditando.cep || null,
-      logradouro: filialEditando.logradouro || null,
+      cep: cepLimpo,
       numero: filialEditando.numero || null,
-      // email_contato: filialEditando.email_contato || null,
-      // ativo: filialEditando.ativo !== undefined ? filialEditando.ativo : true
+      logradouro: filialEditando.logradouro || null,
+      cnpj: cnpjLimpo
     };
 
-    axios.put(`${API_URL}/filiais/${filialEditando.id}`, dadosParaAtualizar, {
-      headers: { Authorization: `Bearer ${tokenSalvo}` }
-    })
-    .then(() => {
+    try {
+      await axios.put(`${API_URL}/filiais/${filialEditando.id}`, dadosParaAtualizar, {
+        headers: { Authorization: `Bearer ${tokenSalvo}` }
+      });
       alert("Filial atualizada com sucesso!");
       setFilialEditando(null); // Fecha o modal
       buscarFiliais(); // Recarrega a lista
-    })
-    .catch((erro) => {
+    } catch (erro) {
       console.error("Erro ao atualizar:", erro);
-      if (erro.response && erro.response.data && erro.response.data.message) {
-        alert("Erro do servidor: " + JSON.stringify(erro.response.data.message));
-      } else {
-        alert("Erro ao atualizar a filial.");
-      }
-    });
+      const msg = erro.response?.data?.message || "Erro interno do servidor (500).";
+      alert(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
   };
-
 
   // Classes reaproveitáveis para os campos do modal
   const inputCls = "w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-flow-400 focus:border-transparent mb-3";
@@ -149,11 +197,10 @@ function FiliaisList() {
                 <tr key={filial.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                   <td className="px-4 py-3">
                     <span className="font-semibold text-slate-800">{filial.nome || "Não informado"}</span>
-                    {/* Se quiser mostrar se está inativa na lista, deixei um aviso vermelho aqui */}
-                    {filial.ativo === false && <span className="ml-2 text-xs text-danger-500 font-medium">(Inativa)</span>}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
-                    {filial.cnpj || "-"}
+                    {/* Renderiza o CNPJ com máscara na lista */}
+                    {filial.cnpj ? maskCNPJ(String(filial.cnpj)) : "-"}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {filial.cidade || "N/I"} {filial.uf ? `/ ${filial.uf}` : ""}
@@ -162,7 +209,7 @@ function FiliaisList() {
                     {filial.logradouro ? (
                       <>
                         {filial.logradouro}, {filial.numero || "S/N"}<br/>
-                        <small className="text-slate-400">CEP: {filial.cep || "N/I"}</small>
+                        <small className="text-slate-400">CEP: {filial.cep ? maskCEP(String(filial.cep)) : "N/I"}</small>
                       </>
                     ) : (
                       "-"
@@ -207,10 +254,25 @@ function FiliaisList() {
               <input type="text" name="nome" value={filialEditando.nome || ''} onChange={handleEditChange} className={inputCls} required />
 
               <label className={labelCls}>CNPJ:</label>
-              <input type="text" name="cnpj" value={filialEditando.cnpj || ''} onChange={handleEditChange} className={inputCls} />
+              <input 
+                type="text" 
+                name="cnpj" 
+                value={filialEditando.cnpj || ''} 
+                onChange={handleEditChange} 
+                placeholder="00.000.000/0000-00"
+                className={inputCls} 
+              />
 
-              {/* <label style={labelStyle}>E-mail de Contato:</label>
-              <input type="email" name="email_contato" value={filialEditando.email_contato || ''} onChange={handleEditChange} style={inputStyle} placeholder="Ex: contato@empresa.com" /> */}
+              <label className={labelCls}>CEP: {buscandoCep && <span className="text-flow-500 text-[10px] ml-2">(Buscando...)</span>}</label>
+              <input 
+                type="text" 
+                name="cep" 
+                value={filialEditando.cep || ''} 
+                onChange={handleEditChange} 
+                onBlur={handleCepBlur} 
+                placeholder="00000-000"
+                className={inputCls} 
+              />
 
               <label className={labelCls}>Logradouro (Rua/Av):</label>
               <input type="text" name="logradouro" value={filialEditando.logradouro || ''} onChange={handleEditChange} className={inputCls} />
@@ -218,25 +280,11 @@ function FiliaisList() {
               <label className={labelCls}>Número:</label>
               <input type="text" name="numero" value={filialEditando.numero || ''} onChange={handleEditChange} className={inputCls} />
 
-              <label className={labelCls}>CEP:</label>
-              <input type="text" name="cep" value={filialEditando.cep || ''} onChange={handleEditChange} className={inputCls} />
-
               <label className={labelCls}>Cidade: *</label>
               <input type="text" name="cidade" value={filialEditando.cidade || ''} onChange={handleEditChange} className={inputCls} required />
 
               <label className={labelCls}>UF:</label>
               <input type="text" name="uf" value={filialEditando.uf || ''} onChange={handleEditChange} maxLength="2" className={`${inputCls} uppercase`} />
-
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 mt-2 mb-1">
-                <input 
-                  type="checkbox" 
-                  name="ativo" 
-                  checked={filialEditando.ativo !== undefined ? filialEditando.ativo : true} 
-                  onChange={handleEditChange} 
-                  className="w-4 h-4 accent-flow-500 cursor-pointer"
-                />
-                Filial Ativa (Desmarque para inativar)
-              </label>
 
               <div className="flex justify-end gap-2 mt-5">
                 <button 
@@ -262,228 +310,3 @@ function FiliaisList() {
 }
 
 export default FiliaisList;
-
-
-
-
-// import { useState, useEffect } from 'react';
-// import axios from 'axios';
-// const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-// function FiliaisList() {
-//   const [filiais, setFiliais] = useState([]);
-//   //
-
-//   // Função para buscar as filiais da API
-//   const buscarFiliais = () => {
-//     // Buscamos o token no cofre na hora que a função é chamada
-//     const tokenSalvo = localStorage.getItem('tokenHidropag');
-
-//     if (!tokenSalvo) {
-//       alert("Você não está logado! Faça o login.");
-//       return;
-//     }
-
-//     axios.get(`${API_URL}/filiais`, {
-//       headers: { Authorization: `Bearer ${tokenSalvo}` }
-//     })
-//     .then((resposta) => {
-//       setFiliais(resposta.data);
-//     })
-//     .catch((erro) => {
-//       console.error("Erro na requisição:", erro);
-//       alert("Erro ao buscar: " + erro.message);
-//     });
-//   };
-
-//   // Isso faz a busca acontecer automaticamente quando a tela abre
-//   useEffect(() => {
-//     buscarFiliais();
-//   }, []);
-
-//   // FUNÇÃO PARA DELETAR
-//   const deletarFilial = (id, nome) => {
-//     const tokenSalvo = localStorage.getItem('tokenHidropag');
-//     if (window.confirm(`Tem certeza que deseja excluir a filial "${nome}"?`)) {
-//       axios.delete(`http://localhost:3000/filiais/${id}`, {
-//         headers: { Authorization: `Bearer ${tokenSalvo}` }
-//       })
-//       .then(() => {
-//         alert("Filial excluída com sucesso!");
-//         buscarFiliais();
-//       })
-//       .catch((erro) => {
-//         console.error("Erro ao deletar:", erro);
-//         alert("Erro ao deletar a filial.");
-//       });
-//     }
-//   };
-
-//   // FUNÇÃO PARA EDITAR
-//   const editarFilial = (id) => {
-//     const tokenSalvo = localStorage.getItem('tokenHidropag');
-//     const novoNome = window.prompt("Digite o novo nome para esta filial:");
-    
-//     if (!novoNome) return; 
-
-//     axios.put(`http://localhost:3000/filiais/${id}`, { nome: novoNome }, {
-//       headers: { Authorization: `Bearer ${tokenSalvo}` }
-//     })
-//     .then(() => {
-//       alert("Filial atualizada com sucesso!");
-//       buscarFiliais();
-//     })
-//     .catch((erro) => {
-//       console.error("Erro ao atualizar:", erro);
-//       alert("Erro ao atualizar a filial.");
-//     });
-//   };
-
-//   return (
-//     <div>
-//       <h3 style={{ color: '#333', marginBottom: '20px' }}>Gerenciamento de Filiais</h3>
-      
-//       {filiais.length === 0 ? (
-//         <p>Nenhuma filial encontrada ou carregando dados...</p>
-//       ) : (
-//         <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'white', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-//           <thead>
-//             <tr style={{ backgroundColor: '#0056b3', color: 'white', textAlign: 'left' }}>
-//               <th style={{ padding: '12px' }}>ID</th>
-//               <th style={{ padding: '12px' }}>Nome da Filial</th>
-//               <th style={{ padding: '12px', textAlign: 'center' }}>Ações</th>
-//             </tr>
-//           </thead>
-//           <tbody>
-//             {filiais.map((filial) => (
-//               <tr key={filial.id} style={{ borderBottom: '1px solid #ddd' }}>
-//                 <td style={{ padding: '12px' }}>{filial.id}</td>
-//                 <td style={{ padding: '12px' }}>{filial.nome}</td>
-//                 <td style={{ padding: '12px', textAlign: 'center' }}>
-//                   <button 
-//                     onClick={() => editarFilial(filial.id)}
-//                     style={{ backgroundColor: '#ffc107', padding: '6px 12px', marginRight: '10px', cursor: 'pointer', borderRadius: '4px' }}
-//                   >
-//                     Editar
-//                   </button>
-//                   <button 
-//                     onClick={() => deletarFilial(filial.id, filial.nome)}
-//                     style={{ backgroundColor: '#dc3545', color: 'white', padding: '6px 12px', cursor: 'pointer', borderRadius: '4px' }}
-//                   >
-//                     Excluir
-//                   </button>
-//                 </td>
-//               </tr>
-//             ))}
-//           </tbody>
-//         </table>
-//       )}
-//     </div>
-//   );
-// }
-
-// export default FiliaisList;
-
-// import { useState, useEffect } from 'react';
-// import axios from 'axios';
-
-// function FiliaisList() {
-//   const [filiais, setFiliais] = useState([]);
-
-//   // Função para buscar as filiais da API
-//   const buscarFiliais = () => {
-
-//     axios.get('http://localhost:3000/filiais')
-//       .then((resposta) => {
-//         setFiliais(resposta.data);
-//       })
-//       .catch((erro) => {
-//         console.error("Erro ao buscar as filiais:", erro);
-//       });
-//   };
-
-//   // Busca as filiais assim que a tela abre
-//   useEffect(() => {
-//     buscarFiliais();
-//   }, []);
-
-//   // FUNÇÃO PARA DELETAR (O "D" do CRUD)
-//   const deletarFilial = (id, nome) => {
-//     if (window.confirm(`Tem certeza que deseja excluir a filial "${nome}"?`)) {
-//       axios.delete(`http://localhost:3000/filiais/${id}`)
-//         .then(() => {
-//           alert("Filial excluída com sucesso!");
-//           buscarFiliais(); // Atualiza a lista na tela após deletar
-//         })
-//         .catch((erro) => {
-//           console.error("Erro ao deletar:", erro);
-//           alert("Erro ao deletar a filial.");
-//         });
-//     }
-//   };
-
-//   // FUNÇÃO PARA EDITAR (O "U" do CRUD - Update)
-//   const editarFilial = (id) => {
-//     const novoNome = window.prompt("Digite o novo nome para esta filial:");
-    
-//     // Validação para não aceitar nome em branco
-//     if (novoNome === null) return; // Se clicou em cancelar
-//     if (!novoNome.trim()) {
-//       alert("O nome da filial não pode ser vazio!");
-//       return;
-//     }
-
-//     axios.patch(`http://localhost:3000/filiais/${id}`, { nome: novoNome })
-//       .then(() => {
-//         alert("Filial atualizada com sucesso!");
-//         buscarFiliais(); // Atualiza a lista na tela
-//       })
-//       .catch((erro) => {
-//         console.error("Erro ao atualizar:", erro);
-//         alert("Erro ao atualizar a filial.");
-//       });
-//   };
-
-//   return (
-//     <div>
-//       <h3 style={{ color: '#333', marginBottom: '20px' }}>Gerenciamento de Filiais</h3>
-      
-//       {filiais.length === 0 ? (
-//         <p>Nenhuma filial encontrada ou carregando dados...</p>
-//       ) : (
-//         <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'white', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-//           <thead>
-//             <tr style={{ backgroundColor: '#0056b3', color: 'white', textAlign: 'left' }}>
-//               <th style={{ padding: '12px' }}>ID</th>
-//               <th style={{ padding: '12px' }}>Nome da Filial</th>
-//               <th style={{ padding: '12px', textAlign: 'center' }}>Ações</th>
-//             </tr>
-//           </thead>
-//           <tbody>
-//             {filiais.map((filial) => (
-//               <tr key={filial.id} style={{ borderBottom: '1px solid #ddd' }}>
-//                 <td style={{ padding: '12px' }}>{filial.id}</td>
-//                 <td style={{ padding: '12px' }}>{filial.nome}</td>
-//                 <td style={{ padding: '12px', textAlign: 'center' }}>
-//                   <button 
-//                     onClick={() => editarFilial(filial.id)}
-//                     style={{ backgroundColor: '#ffc107', color: 'black', border: 'none', padding: '6px 12px', marginRight: '10px', cursor: 'pointer', borderRadius: '4px', fontWeight: 'bold' }}
-//                   >
-//                     Editar
-//                   </button>
-//                   <button 
-//                     onClick={() => deletarFilial(filial.id, filial.nome)}
-//                     style={{ backgroundColor: '#dc3545', color: 'white', border: 'none', padding: '6px 12px', cursor: 'pointer', borderRadius: '4px', fontWeight: 'bold' }}
-//                   >
-//                     Excluir
-//                   </button>
-//                 </td>
-//               </tr>
-//             ))}
-//           </tbody>
-//         </table>
-//       )}
-//     </div>
-//   );
-// }
-
-// export default FiliaisList;

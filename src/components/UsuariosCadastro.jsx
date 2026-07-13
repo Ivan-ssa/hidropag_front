@@ -1,141 +1,192 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { Save } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
-const PERFIS = [
-  { id: "e036fc61-5d05-41d2-9be5-bcecb6f53e37", nome: "Gestor" },
-  { id: "38633f75-0343-413e-bd5e-09b72cf0d344", nome: "Lançador" },
-  { id: "6fc13eec-a3fe-4fe4-811b-2563cb1b5f4c", nome: "Leitor" },
-];
-
 function UsuariosCadastro() {
-  const [nome, setNome] = useState("");
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [perfilId, setPerfilId] = useState("");
+  const [usuario, setUsuario] = useState({
+    nome: "",
+    email: "",
+    senha: "",
+    perfilId: "",
+    filialId: ""
+  });
+
+  const [listaPerfis, setListaPerfis] = useState([]);
+  const [listaFiliais, setListaFiliais] = useState([]);
 
   const navigate = useNavigate();
-
   const token = localStorage.getItem("tokenHidropag");
+  const config = { headers: { Authorization: `Bearer ${token}` } };
 
-  const inputCls = "w-full px-3 py-2.5 mt-1.5 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-flow-400 focus:border-transparent";
-  const labelCls = "text-sm font-medium text-slate-700";
+  // Busca Perfis e Filiais no banco de dados assim que a tela abre
+  useEffect(() => {
+    const buscarDadosAuxiliares = async () => {
+      // Busca os Perfis (Rota corrigida para plural: /perfis)
+      try {
+        const resPerfis = await axios.get(`${API_URL}/perfis`, config);
+        setListaPerfis(resPerfis.data);
+      } catch (erro) {
+        console.error("Erro ao carregar perfis:", erro);
+      }
 
-  function handleSubmit(e) {
+      // Busca as Filiais (Rota /filiais)
+      try {
+        const resFiliais = await axios.get(`${API_URL}/filiais`, config);
+        setListaFiliais(resFiliais.data);
+      } catch (erro) {
+        console.error("Erro ao carregar filiais:", erro);
+      }
+    };
+    
+    if (token) buscarDadosAuxiliares();
+  }, [token]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setUsuario((prev) => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!nome || !email || !senha || !perfilId) {
-      alert("Preencha todos os campos!");
+    if (!usuario.nome || !usuario.email || !usuario.senha || !usuario.perfilId) {
+      alert("Preencha todos os campos obrigatórios (*)");
       return;
     }
 
     const payload = {
-      nome,
-      email,
-      senha,
+      nome: usuario.nome,
+      email: usuario.email,
+      senha: usuario.senha,
       ativo: true,
-      perfil: { id: perfilId },
+      perfil: { id: usuario.perfilId },
+      filial: usuario.filialId ? { id: usuario.filialId } : null
     };
 
-    axios
-      .post(`${API_URL}/usuarios`, payload, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      .then(() => {
-        alert("Usuário cadastrado com sucesso!");
+    try {
+      await axios.post(`${API_URL}/usuarios`, payload, config);
+      alert("Usuário cadastrado com sucesso!");
+      navigate("/usuarios");
+    } catch (erro) {
+      console.error(erro);
+      const msg = erro.response?.data?.message || "Erro ao cadastrar usuário.";
+      alert(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
+  };
 
-        setNome("");
-        setEmail("");
-        setSenha("");
-        setPerfilId("");
-
-        navigate("/usuarios");
-      })
-      .catch((erro) => {
-        console.error(erro);
-        alert("Erro ao cadastrar usuário");
-      });
-  }
+  const inputCls = "w-full px-3 py-2.5 mt-1 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-flow-400 focus:border-transparent";
+  const labelCls = "text-sm font-semibold text-slate-700 block";
 
   return (
-    <div className="flex justify-center">
+    <div className="flex justify-center py-6">
       <form
         onSubmit={handleSubmit}
         className="w-full max-w-md bg-white rounded-xl border border-slate-200 shadow-sm p-6"
       >
-        <h2 className="font-display font-semibold text-lg text-slate-800 mb-5">
-          Cadastrar Usuário
+        <h2 className="font-display font-semibold text-xl text-slate-800 mb-6 border-b border-slate-100 pb-3">
+          Cadastrar Novo Usuário
         </h2>
 
         {/* NOME */}
         <div className="mb-4">
-          <label className={labelCls}>Nome</label>
+          <label className={labelCls}>Nome Completo: *</label>
           <input
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
+            type="text"
+            name="nome"
+            value={usuario.nome}
+            onChange={handleChange}
             className={inputCls}
+            placeholder="Ex: João da Silva"
           />
         </div>
 
         {/* EMAIL */}
         <div className="mb-4">
-          <label className={labelCls}>Email</label>
+          <label className={labelCls}>E-mail: *</label>
           <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            type="email"
+            name="email"
+            value={usuario.email}
+            onChange={handleChange}
             className={inputCls}
+            placeholder="joao@empresa.com"
           />
         </div>
 
         {/* SENHA */}
         <div className="mb-4">
-          <label className={labelCls}>Senha</label>
+          <label className={labelCls}>Senha: *</label>
           <input
             type="password"
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
+            name="senha"
+            value={usuario.senha}
+            onChange={handleChange}
             className={inputCls}
+            placeholder="Mínimo 6 caracteres"
           />
         </div>
 
         {/* PERFIL */}
-        <div className="mb-5">
-          <label className={labelCls}>Perfil</label>
-
+        <div className="mb-4">
+          <label className={labelCls}>Perfil de Acesso: *</label>
           <select
-            value={perfilId}
-            onChange={(e) => setPerfilId(e.target.value)}
+            name="perfilId"
+            value={usuario.perfilId}
+            onChange={handleChange}
             className={`${inputCls} bg-white`}
           >
-            <option value="">Selecione um perfil</option>
-            {PERFIS.map((p) => (
+            <option value="">Selecione um perfil...</option>
+            {listaPerfis.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.nome}
+                {/* Capitaliza a primeira letra para ficar bonito na tela (ex: 'gestor' vira 'Gestor') */}
+                {p.nome.charAt(0).toUpperCase() + p.nome.slice(1)}
               </option>
             ))}
           </select>
         </div>
 
-        {/* BOTÃO SALVAR */}
-        <button
-          type="submit"
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-success-500 hover:bg-green-700 text-white text-sm font-semibold transition-colors mb-2.5"
-        >
-          <Save className="w-4 h-4" />
-          Salvar
-        </button>
+        {/* FILIAL */}
+        <div className="mb-8">
+          <label className={labelCls}>Filial (Opcional):</label>
+          <select
+            name="filialId"
+            value={usuario.filialId}
+            onChange={handleChange}
+            className={`${inputCls} bg-white`}
+          >
+            <option value="">Selecione a filial associada...</option>
+            {listaFiliais.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.nome}
+              </option>
+            ))}
+          </select>
+        </div>
 
-        {/* BOTÃO CANCELAR */}
-        <button
-          type="button"
-          onClick={() => navigate("/usuarios")}
-          className="w-full py-2.5 rounded-lg bg-slate-500 hover:bg-slate-600 text-white text-sm font-semibold transition-colors"
-        >
-          Cancelar
-        </button>
+        {/* BOTÕES */}
+        <div className="flex flex-col gap-2">
+          <button
+            type="submit"
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-flow-500 hover:bg-flow-600 text-white text-sm font-semibold transition-colors"
+          >
+            <Save className="w-4 h-4" />
+            Salvar Usuário
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate("/usuarios")}
+            className="w-full py-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold transition-colors"
+          >
+            Cancelar
+          </button>
+        </div>
       </form>
     </div>
   );
