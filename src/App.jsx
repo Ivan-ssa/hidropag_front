@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { Droplets } from "lucide-react";
-
+import { PrivateRoute } from "./components/PrivateRoute";
 import "./App.css";
 
 import Sidebar from "./components/Sidebar";
@@ -23,7 +23,10 @@ import NotasCadastro from "./components/NotasCadastro";
 
 import AprovacoesList from "./components/AprovacoesList";
 import AprovacoesCadastro from "./components/AprovacoesCadastro";
+
+
 export const getPerfil = () => localStorage.getItem("usuarioPerfil");
+
 
 export const temAcesso = (perfisPermitidos) => {
   const perfilAtual = getPerfil();
@@ -88,37 +91,29 @@ function App() {
   return (
     <Router>
       <Routes>
-        {/* Login fica de fora da guarda: é a única tela acessível sem token */}
         <Route path="/login" element={<Login />} />
 
-        {/* Tudo aqui dentro exige login */}
         <Route element={<RequireAuth />}>
           <Route path="/" element={<Inicio />} />
 
-          {/* FILIAIS */}
-          <Route path="/filiais" element={<FiliaisList />} />
-          <Route path="/filiais/nova" element={<FilialForm />} />
+          {/* Rotas protegidas individualmente */}
+          <Route path="/filiais" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><FiliaisList /></PrivateRoute>} />
+          <Route path="/filiais/nova" element={<PrivateRoute allowedRoles={['root','gestor','lancador']}><FilialForm /></PrivateRoute>} />
 
-          {/* USUÁRIOS */}
-          <Route path="/usuarios" element={<UsuariosList />} />
-          <Route path="/usuarios/novo" element={<UsuariosCadastro />} />
+          <Route path="/usuarios" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><UsuariosList /></PrivateRoute>} />
+          <Route path="/usuarios/novo" element={<PrivateRoute allowedRoles={['root','gestor','lancador']}><UsuariosCadastro /></PrivateRoute>} />
 
-          {/* OBRAS */}
-          <Route path="/obras" element={<ObrasList />} />
-          <Route path="/obras/nova" element={<ObrasCadastro />} />
+          <Route path="/obras" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><ObrasList /></PrivateRoute>} />
+          <Route path="/obras/nova" element={<PrivateRoute allowedRoles={['root','gestor','lancador']}><ObrasCadastro /></PrivateRoute>} />
 
-          {/* NOTAS - AGORA USANDO OS COMPONENTES REAIS */}
-          <Route path="/notas" element={<NotasList />} />
-          <Route path="/notas/nova" element={<NotasCadastro />} />
+          <Route path="/notas" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><NotasList /></PrivateRoute>} />
+          <Route path="/notas/nova" element={<PrivateRoute allowedRoles={['root','gestor','lancador']}><NotasCadastro /></PrivateRoute>} />
 
-          {/* APROVAÇÕES */}
-          <Route path="/aprovacoes" element={<AprovacoesList />} />
-          <Route path="/aprovacoes/nova" element={<AprovacoesCadastro />} />
+          <Route path="/aprovacoes" element={<PrivateRoute allowedRoles={['gestor','root',]}><AprovacoesList /></PrivateRoute>} />
+          <Route path="/aprovacoes/nova" element={<PrivateRoute allowedRoles={['gestor','root','leitor','lancador']}><AprovacoesCadastro /></PrivateRoute>} />
         </Route>
 
-        {/* Qualquer rota que não exista cai no login (ou no início, se já estiver logado) */}
-        <Route path="*" element={<Navigate to="/login" replace />} />
-        
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
   );

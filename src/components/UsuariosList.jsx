@@ -4,17 +4,12 @@ import { Link } from "react-router-dom";
 import { Plus, Pencil, Trash2, X, Users, UserMinus } from "lucide-react";
 import { temAcesso } from "../App";
 
-{temAcesso(['gestor', 'root']) && (
-  <button onClick={() => excluirFilial(id)} className="bg-danger-500">
-    Excluir
-  </button>
-)}
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 function UsuariosList() {
   const [usuarios, setUsuarios] = useState([]);
-  
+  const podeAcessar = temAcesso(['root']);
   // NOVO: Estado para filtrar a lista (true = mostra ativos, false = mostra inativos)
   const [mostrarAtivos, setMostrarAtivos] = useState(true);
 

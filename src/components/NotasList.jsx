@@ -10,6 +10,7 @@ function NotasList() {
   const [obras, setObras] = useState([]);
   const [notaEditando, setNotaEditando] = useState(null);
   const [arquivoEdicao, setArquivoEdicao] = useState(null);
+  const perfil = localStorage.getItem("usuarioPerfil");
   
   // Controla o popup de visualização do PDF e Aprovação
   const [notaVisualizando, setNotaVisualizando] = useState(null); 
@@ -310,20 +311,28 @@ function NotasList() {
 
                   {/* BOTÕES DE EDITAR E EXCLUIR */}
                   <td className="px-4 py-3 text-center whitespace-nowrap">
-                    <button
-                      onClick={() => abrirModalEdicao(nota)}
-                      className="inline-flex items-center gap-1 mr-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-md bg-amber-500 hover:bg-amber-600 text-white transition-colors"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => excluirNota(nota.id)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-md bg-ink-800 hover:bg-ink-700 text-white transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Excluir
-                    </button>
+                    
+                    {/* Apenas Lançador, Gestor ou Root podem EDITAR */}
+                    {(perfil === 'lancador' || perfil === 'gestor' || perfil === 'root') && (
+                      <button
+                        onClick={() => abrirModalEdicao(nota)}
+                        className="inline-flex items-center gap-1 mr-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-md bg-amber-500 hover:bg-amber-600 text-white transition-colors"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        Editar
+                      </button>
+                    )}
+
+                    {/* Apenas Gestor ou Root podem EXCLUIR */}
+                    {(perfil === 'gestor' || perfil === 'root') && (
+                      <button
+                        onClick={() => excluirNota(nota.id)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-md bg-ink-800 hover:bg-ink-700 text-white transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Excluir
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))
@@ -480,14 +489,14 @@ function NotasList() {
                   <label className={labelCls}>Parcelas:</label>
                   <input type="number" name="quant_parcelas" value={notaEditando.quant_parcelas || 1} onChange={handleEditChange} className={inputCls} />
                 </div>
-                <div>
-                  <label className={labelCls}>Status:</label>
+                {/* <div>
+                  <label className={labelCls}>Statussss:</label>
                   <select name="status" value={notaEditando.status} onChange={handleEditChange} className={`${inputCls} bg-white`}>
                     <option value="0">A Decidir</option>
                     <option value="1">Aprovada</option>
                     <option value="2">Reprovada</option>
                   </select>
-                </div>
+                </div> */}
                 <div className="sm:col-span-2">
                   <label className={labelCls}>Trocar Obra:</label>
                   <select name="obraId" value={notaEditando.obraId} onChange={handleEditChange} className={`${inputCls} bg-white`}>
