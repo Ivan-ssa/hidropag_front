@@ -489,14 +489,14 @@ function NotasList() {
                   <label className={labelCls}>Parcelas:</label>
                   <input type="number" name="quant_parcelas" value={notaEditando.quant_parcelas || 1} onChange={handleEditChange} className={inputCls} />
                 </div>
-                {/* <div>
+                <div>
                   <label className={labelCls}>Statussss:</label>
                   <select name="status" value={notaEditando.status} onChange={handleEditChange} className={`${inputCls} bg-white`}>
                     <option value="0">A Decidir</option>
                     <option value="1">Aprovada</option>
                     <option value="2">Reprovada</option>
                   </select>
-                </div> */}
+                </div>
                 <div className="sm:col-span-2">
                   <label className={labelCls}>Trocar Obra:</label>
                   <select name="obraId" value={notaEditando.obraId} onChange={handleEditChange} className={`${inputCls} bg-white`}>
