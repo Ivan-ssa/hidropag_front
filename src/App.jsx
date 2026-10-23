@@ -17,22 +17,23 @@ import UsuariosCadastro from "./components/UsuariosCadastro";
 import ObrasList from "./components/ObrasList";
 import ObrasCadastro from "./components/ObrasCadastro";
 
-// IMPORTANDO OS COMPONENTES DE NOTAS QUE ACABAMOS DE CRIAR
 import NotasList from "./components/NotasList";
 import NotasCadastro from "./components/NotasCadastro";
 
 import AprovacoesList from "./components/AprovacoesList";
 import AprovacoesCadastro from "./components/AprovacoesCadastro";
 
+import Configuracoes from './components/Configuracoes';
+import Fornecedores from './components/Fornecedores'; 
+import Clientes from './components/Clientes'; // <-- 1. IMPORTAMOS A TELA DE CLIENTES AQUI
 
 export const getPerfil = () => localStorage.getItem("usuarioPerfil");
-
 
 export const temAcesso = (perfisPermitidos) => {
   const perfilAtual = getPerfil();
   return perfisPermitidos.includes(perfilAtual);
 };
-// Componente temporário (mantido caso você queira usar no futuro para outras telas)
+
 function EmConstrucao({ modulo }) {
   return (
     <div style={{ textAlign: "center", marginTop: "50px" }}>
@@ -42,18 +43,17 @@ function EmConstrucao({ modulo }) {
   );
 }
 
-// Tela inicial / dashboard de boas-vindas
 function Inicio() {
   return (
     <div className="max-w-2xl">
       <div className="bg-white border border-slate-200 rounded-xl p-8 shadow-sm">
-        <div className="w-12 h-12 rounded-xl bg-flow-100 flex items-center justify-center mb-4">
-          <Droplets className="w-6 h-6 text-flow-600" />
+        <div className="w-12 h-12 rounded-xl bg-extra flex items-center justify-center mb-4">
+          <Droplets className="w-6 h-6 text-hidrotec-1 fill-extra" />
         </div>
-        <h2 className="font-display font-semibold text-2xl text-slate-800 mb-2">
+        <h2 className="font-display font-semibold text-2xl text-hidrotec-3 mb-2">
           Bem-vindo ao sistema HidroPag!
         </h2>
-        <p className="text-slate-500 leading-relaxed">
+        <p className="text-hidrotec-4 leading-relaxed">
           Use o menu ao lado para gerenciar filiais, usuários, obras e notas
           fiscais.
         </p>
@@ -62,9 +62,6 @@ function Inicio() {
   );
 }
 
-// Guarda de rota: só deixa passar quem tem token salvo no localStorage.
-// Sem token -> manda direto para o /login. Com token -> mostra o layout
-// completo (sidebar + header) e renderiza a rota filha no <Outlet />.
 function RequireAuth() {
   const token = localStorage.getItem("tokenHidropag");
 
@@ -96,7 +93,6 @@ function App() {
         <Route element={<RequireAuth />}>
           <Route path="/" element={<Inicio />} />
 
-          {/* Rotas protegidas individualmente */}
           <Route path="/filiais" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><FiliaisList /></PrivateRoute>} />
           <Route path="/filiais/nova" element={<PrivateRoute allowedRoles={['root','gestor','lancador']}><FilialForm /></PrivateRoute>} />
 
@@ -109,8 +105,15 @@ function App() {
           <Route path="/notas" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><NotasList /></PrivateRoute>} />
           <Route path="/notas/nova" element={<PrivateRoute allowedRoles={['root','gestor','lancador']}><NotasCadastro /></PrivateRoute>} />
 
-          <Route path="/aprovacoes" element={<PrivateRoute allowedRoles={['gestor','root',]}><AprovacoesList /></PrivateRoute>} />
+          <Route path="/aprovacoes" element={<PrivateRoute allowedRoles={['gestor','root']}><AprovacoesList /></PrivateRoute>} />
           <Route path="/aprovacoes/nova" element={<PrivateRoute allowedRoles={['gestor','root','leitor','lancador']}><AprovacoesCadastro /></PrivateRoute>} />
+          
+          <Route path="/configuracoes" element={<PrivateRoute allowedRoles={['root','gestor']}><Configuracoes /></PrivateRoute>} />
+          
+          <Route path="/fornecedores" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><Fornecedores /></PrivateRoute>} />
+          
+          {/* 2. ADICIONAMOS A ROTA DE CLIENTES AQUI */}
+          <Route path="/clientes" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><Clientes /></PrivateRoute>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -120,194 +123,3 @@ function App() {
 }
 
 export default App;
-
-
-// import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
-
-// import "./App.css";
-
-// import Login from "./components/Login";
-
-// import FiliaisList from "./components/FiliaisList";
-// import FilialForm from "./components/FilialForm";
-
-// import UsuariosList from "./components/UsuariosList";
-// import UsuariosCadastro from "./components/UsuariosCadastro";
-
-// import ObrasList from "./components/ObrasList";
-// import ObrasCadastro from "./components/ObrasCadastro";
-
-// // Componente temporário
-// function EmConstrucao({ modulo }) {
-//   return (
-//     <div style={{ textAlign: "center", marginTop: "50px" }}>
-//       <h3>🚧 {modulo}</h3>
-//       <p>Esta funcionalidade será desenvolvida em breve.</p>
-//     </div>
-//   );
-// }
-
-// function App() {
-//   return (
-//     <Router>
-
-//       <nav className="navbar">
-
-//         <h2>HidroPag</h2>
-
-//         <ul className="nav-links">
-
-//           <li>
-//             <Link to="/">Início</Link>
-//           </li>
-
-//           <li>
-//             <Link to="/login">Login</Link>
-//           </li>
-
-//           {/* FILIAIS */}
-//           <li className="dropdown">
-
-//             <span className="dropbtn">Filiais ▼</span>
-
-//             <div className="dropdown-content">
-
-//               <Link to="/filiais">
-//                 Listar Filiais
-//               </Link>
-
-//               <Link to="/filiais/nova">
-//                 Cadastrar Filial
-//               </Link>
-
-//             </div>
-
-//           </li>
-
-//           {/* USUÁRIOS */}
-//           <li className="dropdown">
-
-//             <span className="dropbtn">
-//               Usuários ▼
-//             </span>
-
-//             <div className="dropdown-content">
-
-//               <Link to="/usuarios">
-//                 Listar Usuários
-//               </Link>
-
-//               <Link to="/usuarios/novo">
-//                 Cadastrar Usuário
-//               </Link>
-
-//             </div>
-
-//           </li>
-
-//           {/* OBRAS */}
-//           <li className="dropdown">
-
-//             <span className="dropbtn">
-//               Obras ▼
-//             </span>
-
-//             <div className="dropdown-content">
-
-//               <Link to="/obras">
-//                 Listar Obras
-//               </Link>
-
-//               <Link to="/obras/nova">
-//                 Cadastrar Obra
-//               </Link>
-
-//             </div>
-
-//           </li>
-
-//           {/* NOTAS */}
-//           <li className="dropdown">
-
-//             <span className="dropbtn">
-//               Notas Fiscais ▼
-//             </span>
-
-//             <div className="dropdown-content">
-
-//               <Link to="/notas">
-//                 Listar Notas
-//               </Link>
-
-//               <Link to="/notas/nova">
-//                 Cadastrar Nota
-//               </Link>
-
-//             </div>
-
-//           </li>
-
-//         </ul>
-
-//       </nav>
-
-//       <div className="container">
-
-//         <Routes>
-
-//           <Route
-//             path="/"
-//             element={<h3>Bem-vindo ao sistema HidroPag!</h3>}
-//           />
-
-//           <Route
-//             path="/login"
-//             element={<Login />}
-//           />
-
-//           {/* FILIAIS */}
-//           <Route
-//             path="/filiais"
-//             element={<FiliaisList />}
-//           />
-
-//           <Route
-//             path="/filiais/nova"
-//             element={<FilialForm />}
-//           />
-
-//           {/* USUÁRIOS */}
-//           <Route
-//             path="/usuarios"
-//             element={<UsuariosList />}
-//           />
-
-//           <Route
-//             path="/usuarios/novo"
-//             element={<UsuariosCadastro />}
-//           />
-
-//           {/* OBRAS */}
-//           <Route path="/obras" element={<ObrasList />} />
-//           <Route path="/obras/nova" element={<ObrasCadastro />} />
-          
-//           {/* NOTAS */}
-//           <Route
-//             path="/notas"
-//             element={<EmConstrucao modulo="Listagem de Notas" />}
-//           />
-
-//           <Route
-//             path="/notas/nova"
-//             element={<EmConstrucao modulo="Cadastro de Notas" />}
-//           />
-
-//         </Routes>
-
-//       </div>
-
-//     </Router>
-//   );
-// }
-
-// export default App;

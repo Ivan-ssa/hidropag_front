@@ -1,14 +1,17 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
-import { Save } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { ArrowLeft, Save, FileText, UploadCloud, AlertCircle } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-function NotasCadastro() {
+export default function NotasCadastro() {
   const navigate = useNavigate();
+  
+  // Estados originais do Ivan mantidos integralmente
   const [obras, setObras] = useState([]);
   const [arquivo, setArquivo] = useState(null);
+  const [erro, setErro] = useState(null);
   
   const [nota, setNota] = useState({
     numero_nf: '',
@@ -16,7 +19,7 @@ function NotasCadastro() {
     data_vencimento: '',
     valor_total: '',
     quant_parcelas: 1,
-    status: 0, // 0 = A Decidir, 1 = Aprovada, 2 = Reprovada
+    status: 0,
     obraId: ''
   });
 
@@ -24,11 +27,13 @@ function NotasCadastro() {
     headers: { Authorization: `Bearer ${localStorage.getItem('tokenHidropag')}` }
   };
 
-  // Busca as obras para preencher o <select> (Rota ajustada para minúsculo)
   useEffect(() => {
     axios.get(`${API_URL}/obras`, config)
       .then(res => setObras(res.data))
-      .catch(err => console.error("Erro ao buscar obras:", err));
+      .catch(err => {
+        console.error("Erro ao buscar obras:", err);
+        setErro("Não foi possível carregar a lista de obras.");
+      });
   }, []);
 
   const handleChange = (e) => {
@@ -40,120 +45,161 @@ function NotasCadastro() {
     setArquivo(e.target.files[0]);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setErro(null);
 
+    // Validação original mantida
     if (!nota.obraId || !nota.numero_nf) {
-      alert("Preencha o Número da NF e selecione uma Obra!");
+      setErro("Preencha o Número da NF e selecione uma Obra!");
       return;
     }
 
-    // Como lidamos com upload de arquivo, empacotamos no FormData
-    const formData = new FormData();
-    formData.append('numero_nf', Number(nota.numero_nf));
-    formData.append('fornecedor', nota.fornecedor);
-    formData.append('data_vencimento', nota.data_vencimento);
-    formData.append('valor_total', Number(nota.valor_total));
-    formData.append('quant_parcelas', Number(nota.quant_parcelas));
-    formData.append('status', Number(nota.status));
-    formData.append('obra', nota.obraId); // ID da obra vinculada
-    
-    if (arquivo) {
-      formData.append('file', arquivo);
-    }
+    try {
+      // 1. O PAYLOAD AGORA É JSON E VAI PARA A ROTA CORRETA DE CRIAÇÃO
+      const payload = {
+        numero_nf: Number(nota.numero_nf),
+        fornecedor: nota.fornecedor,
+        data_vencimento: nota.data_vencimento || null,
+        valor_total: Number(nota.valor_total),
+        quant_parcelas: Number(nota.quant_parcelas),
+        status: Number(nota.status),
+        obraId: nota.obraId
+      };
 
-    // Envia os dados para o backend (Rota ajustada para minúsculo)
-    axios.post(`${API_URL}/notas`, formData, config)
-      .then(() => {
-        alert("Nota cadastrada com sucesso!");
-        navigate('/notas'); // Redireciona de volta para a listagem ampla
-      })
-      .catch((erro) => {
-        console.error("Erro ao cadastrar nota:", erro);
-        if (erro.response && erro.response.data && erro.response.data.message) {
-          alert("Erro do servidor: " + JSON.stringify(erro.response.data.message));
-        } else {
-          alert("Erro ao cadastrar a nota. Verifique se todos os campos estão corretos.");
-        }
-      });
+      const resNota = await axios.post(`${API_URL}/notas-fiscais`, payload, config);
+      const notaCriadaId = resNota.data.id;
+
+      // 2. SE HOUVER ARQUIVO, FAZEMOS O UPLOAD NA ROTA ESPECÍFICA DE ARQUIVOS
+      if (arquivo && notaCriadaId) {
+        const fileData = new FormData();
+        fileData.append("file", arquivo);
+        
+        await axios.patch(`${API_URL}/notas-fiscais/${notaCriadaId}/arquivos`, fileData, {
+          headers: { Authorization: config.headers.Authorization }
+        });
+      }
+
+      alert("Nota cadastrada com sucesso!");
+      navigate('/notas');
+
+    } catch (erro) {
+      console.error("Erro ao cadastrar nota:", erro);
+      if (erro.response && erro.response.data && erro.response.data.message) {
+        setErro("Erro do servidor: " + JSON.stringify(erro.response.data.message));
+      } else {
+        setErro("Erro ao cadastrar a nota. Verifique se todos os campos estão corretos.");
+      }
+    }
   };
 
-  // Classes limpas para o formulário
-  const inputCls = "w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-flow-400 focus:border-transparent";
-  const labelCls = "block text-sm font-medium text-slate-700 mb-1.5";
+  // Classes visuais do novo padrão Hidrotec
+  const inputCls = "w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3";
+  const labelCls = "block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2";
 
   return (
-    <div className="max-w-3xl">
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-        <form onSubmit={handleSubmit}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
+    <div className="max-w-4xl w-full mx-auto font-body pb-12">
+      
+      <header className="mb-8 flex items-center justify-between">
+        <div>
+          <Link 
+            to="/notas" 
+            className="inline-flex items-center gap-2 text-sm font-medium text-hidrotec-4 hover:text-hidrotec-1 transition-colors mb-4"
+          >
+            <ArrowLeft size={16} />
+            Voltar para listagem
+          </Link>
+          <h1 className="text-3xl font-display font-semibold text-hidrotec-3 mb-2 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-extra flex items-center justify-center">
+              <FileText className="w-5 h-5 text-hidrotec-1" strokeWidth={2} />
+            </div>
+            Lançar Nova Nota
+          </h1>
+          <p className="text-sm text-hidrotec-4">
+            Registe os dados da nota fiscal e anexe o comprovativo.
+          </p>
+        </div>
+      </header>
 
-            <div>
-              <label className={labelCls}>Número da NF: *</label>
-              <input type="number" name="numero_nf" value={nota.numero_nf} onChange={handleChange} className={inputCls} required />
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <form onSubmit={handleSubmit} className="p-8">
+          
+          {erro && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 text-red-600">
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+              <p className="text-sm font-medium">{erro}</p>
+            </div>
+          )}
+
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              <div>
+                <label className={labelCls}>Número da NF: *</label>
+                <input type="number" name="numero_nf" value={nota.numero_nf} onChange={handleChange} className={inputCls} required placeholder="Ex: 123456" />
+              </div>
+
+              <div>
+                <label className={labelCls}>Fornecedor:</label>
+                <input type="text" name="fornecedor" value={nota.fornecedor} onChange={handleChange} className={inputCls} placeholder="Ex: Distribuidora Hidráulica" />
+              </div>
+
+              <div>
+                <label className={labelCls}>Data de Vencimento:</label>
+                <input type="date" name="data_vencimento" value={nota.data_vencimento} onChange={handleChange} className={inputCls} />
+              </div>
+
+              <div>
+                <label className={labelCls}>Valor Total (R$):</label>
+                <input type="number" step="0.01" name="valor_total" value={nota.valor_total} onChange={handleChange} className={inputCls} placeholder="0.00" />
+              </div>
+
+              <div>
+                <label className={labelCls}>Qtd. de Parcelas:</label>
+                <input type="number" name="quant_parcelas" value={nota.quant_parcelas} onChange={handleChange} className={inputCls} min="1" />
+              </div>
+
+              <div>
+                <label className={labelCls}>Vincular à Obra: *</label>
+                <select name="obraId" value={nota.obraId} onChange={handleChange} className={`${inputCls} bg-white`} required>
+                  <option value="">-- Selecione uma Obra --</option>
+                  {obras.map(obra => (
+                    <option key={obra.id} value={obra.id}>{obra.nome_obra || obra.nome || 'Obra sem nome'}</option>
+                  ))}
+                </select>
+              </div>
+
             </div>
 
-            <div>
-              <label className={labelCls}>Fornecedor:</label>
-              <input type="text" name="fornecedor" value={nota.fornecedor} onChange={handleChange} className={inputCls} placeholder="Ex: Distribuidora Hidráulica" />
-            </div>
-
-            <div>
-              <label className={labelCls}>Data de Vencimento:</label>
-              <input type="date" name="data_vencimento" value={nota.data_vencimento} onChange={handleChange} className={inputCls} />
-            </div>
-
-            <div>
-              <label className={labelCls}>Valor Total (R$):</label>
-              <input type="number" step="0.01" name="valor_total" value={nota.valor_total} onChange={handleChange} className={inputCls} placeholder="0.00" />
-            </div>
-
-            <div>
-              <label className={labelCls}>Qtd. de Parcelas:</label>
-              <input type="number" name="quant_parcelas" value={nota.quant_parcelas} onChange={handleChange} className={inputCls} min="1" />
-            </div>
-
-            <div>
-              <label className={labelCls}>Vincular à Obra: *</label>
-              <select name="obraId" value={nota.obraId} onChange={handleChange} className={`${inputCls} bg-white`} required>
-                <option value="">-- Selecione uma Obra --</option>
-                {obras.map(obra => (
-                  <option key={obra.id} value={obra.id}>{obra.nome_obra}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className={labelCls}>Arquivo da Nota (PDF/Imagem):</label>
-              <input
-                type="file"
-                onChange={handleFileChange}
-                className="w-full text-sm text-slate-600 file:mr-3 file:px-3 file:py-1.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-flow-100 file:text-flow-600 hover:file:bg-flow-100/70"
-              />
+            <div className="p-5 bg-slate-50/50 rounded-xl border border-slate-200 border-dashed mt-4">
+              <label className={labelCls}>Arquivo da Nota (PDF):</label>
+              <div className="flex items-center gap-4 mt-2">
+                <div className="w-10 h-10 rounded-full bg-hidrotec-1/10 flex items-center justify-center shrink-0">
+                  <UploadCloud className="w-5 h-5 text-hidrotec-1" />
+                </div>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={handleFileChange}
+                  className="w-full text-sm text-slate-600 file:mr-4 file:px-4 file:py-2 file:rounded-lg file:border-0 file:text-xs file:font-bold file:uppercase file:tracking-wider file:bg-extra file:text-hidrotec-1 hover:file:bg-hidrotec-2 hover:file:text-white file:transition-colors cursor-pointer"
+                />
+              </div>
             </div>
 
           </div>
 
-          <div className="mt-6 flex gap-3">
-            <button
-              type="submit"
-              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-lg bg-success-500 hover:bg-green-700 text-white transition-colors"
-            >
-              <Save className="w-4 h-4" />
+          <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-end gap-3">
+            <Link to="/notas" className="px-5 py-2.5 text-sm font-medium text-slate-500 hover:text-hidrotec-3 transition-colors">
+              Cancelar
+            </Link>
+            <button type="submit" className="bg-hidrotec-1 hover:bg-hidrotec-2 text-white px-6 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 shadow-sm">
+              <Save size={18} />
               Salvar Nota
             </button>
-            <button
-              type="button"
-              onClick={() => navigate('/notas')}
-              className="px-5 py-2.5 text-sm font-semibold rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 transition-colors"
-            >
-              Voltar
-            </button>
           </div>
+          
         </form>
       </div>
     </div>
   );
 }
-
-export default NotasCadastro;

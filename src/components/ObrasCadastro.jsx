@@ -1,246 +1,328 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import axios from 'axios';
+import { ArrowLeft, Save, Building2, AlertCircle, Loader2 } from 'lucide-react';
 
-// import { useState } from 'react';
-// import axios from 'axios';
-// import { useNavigate } from 'react-router-dom';
-
-// function ObrasCadastro() {
-//   const [nome, setNome] = useState('');
-//   const [local, setLocal] = useState(''); // Campo de exemplo
-//   const navigate = useNavigate();
-
-//   const handleSalvar = (e) => {
-//     e.preventDefault();
-//     const tokenSalvo = localStorage.getItem('tokenHidropag');
-
-//     if (!tokenSalvo) {
-//       alert("Você não está logado! Faça o login.");
-//       return;
-//     }
-
-//     if (!nome) {
-//       alert("Por favor, preencha o nome da obra!");
-//       return;
-//     }
-
-//     // Enviando para a rota de cadastro que você especificou
-//     axios.post('http://localhost:3000/obras/nova', {
-//       nome: nome,
-//       local: local // Se a sua API TypeORM não tiver a coluna "local", você pode apagar esta linha
-//     }, {
-//       headers: { Authorization: `Bearer ${tokenSalvo}` }
-//     })
-//     .then(() => {
-//       alert("Obra cadastrada com sucesso!");
-//       navigate('/obras'); // Volta para a tela da lista de obras
-//     })
-//     .catch((erro) => {
-//       console.error("Erro ao cadastrar obra:", erro);
-//       alert("Erro ao cadastrar. Verifique o console para mais detalhes.");
-//     });
-//   };
-
-//   return (
-//     <div style={{ display: 'flex', justifyContent: 'center', marginTop: '50px' }}>
-//       <div style={{ width: '100%', maxWidth: '500px', padding: '30px', backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
-//         <h2 style={{ textAlign: 'center', color: '#0056b3', marginBottom: '20px' }}>Cadastrar Nova Obra</h2>
-
-//         <form onSubmit={handleSalvar}>
-//           <div style={{ marginBottom: '15px' }}>
-//             <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Nome da Obra:</label>
-//             <input
-//               type="text"
-//               value={nome}
-//               onChange={(e) => setNome(e.target.value)}
-//               placeholder="Ex: Manutenção Bloco C"
-//               style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #ccc' }}
-//             />
-//           </div>
-
-//           <div style={{ marginBottom: '20px' }}>
-//             <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Local / Endereço:</label>
-//             <input
-//               type="text"
-//               value={local}
-//               onChange={(e) => setLocal(e.target.value)}
-//               placeholder="Ex: Av. Assis Brasil, 123"
-//               style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #ccc' }}
-//             />
-//           </div>
-
-//           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-//             <button 
-//               type="button" 
-//               onClick={() => navigate('/obras')} 
-//               style={{ padding: '12px', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', width: '48%' }}
-//             >
-//               Cancelar
-//             </button>
-//             <button 
-//               type="submit" 
-//               style={{ padding: '12px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', width: '48%' }}
-//             >
-//               Salvar Obra
-//             </button>
-//           </div>
-//         </form>
-//       </div>
-//     </div>
-//   );
-// }
-
-// export default ObrasCadastro;
-
-
-
-
-
-import { useEffect, useState } from "react";
-import axios from "axios";
-import { useNavigate } from "react-router-dom";
-import { Save } from "lucide-react";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
-
-function ObrasCadastro() {
+export default function ObrasCadastro() {
   const navigate = useNavigate();
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
-  const [nomeObra, setNomeObra] = useState("");
-  const [filialId, setFilialId] = useState("");
+  // Estado único para todos os campos baseados na sua entidade NestJS
+  const [formData, setFormData] = useState({
+    nome_obra: '',
+    cno: '',
+    endereco_localizacao: '',
+    valor_previsto: '',
+    orcamento_previsto: '',
+    status: 1, // 1 (Em Andamento), 2 (Pausada), 3 (Finalizada)
+    ativo: true,
+    filialId: '',
+    clienteId: ''
+  });
   
-  const [ativo, setAtivo] = useState(true);
-
   const [filiais, setFiliais] = useState([]);
+  const [clientes, setClientes] = useState([]);
+  
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState(null);
 
   const token = localStorage.getItem("tokenHidropag");
-
-  const config = {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  };
+  const config = { headers: { Authorization: `Bearer ${token}` } };
 
   useEffect(() => {
     carregarFiliais();
+    carregarClientes();
   }, []);
 
-  function carregarFiliais() {
-    axios
-      .get(`${API_URL}/filiais`, config)
-      .then((response) => {
-        const lista = response.data.sort((a, b) =>
-          a.nome.localeCompare(b.nome)
-        );
+  const carregarFiliais = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/filiais`, config);
+      setFiliais(response.data.sort((a, b) => a.nome.localeCompare(b.nome)));
+    } catch (error) {
+      console.error(error);
+      setErro("Não foi possível carregar a lista de filiais.");
+    }
+  };
 
-        setFiliais(lista);
-      })
-      .catch((erro) => {
-        console.error(erro);
-        alert("Erro ao carregar as filiais.");
-      });
-  }
+  const carregarClientes = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/clientes`, config);
+      setClientes(response.data.sort((a, b) => {
+        const nomeA = a.razaoSocial || a.nome || '';
+        const nomeB = b.razaoSocial || b.nome || '';
+        return nomeA.localeCompare(nomeB);
+      }));
+    } catch (error) {
+      console.error(error);
+      setErro("Não foi possível carregar a lista de clientes.");
+    }
+  };
 
-  function salvarObra(e) {
+  // Função genérica para atualizar qualquer campo do formulário
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const salvarObra = async (e) => {
     e.preventDefault();
 
-    if (!nomeObra || !filialId) {
-      alert("Preencha todos os campos.");
+    if (!formData.nome_obra || !formData.filialId) {
+      setErro("Preencha todos os campos obrigatórios (Nome e Filial).");
       return;
     }
 
+    setCarregando(true);
+    setErro(null);
+
+    // Formatação do payload exatamente como a sua API espera
     const payload = {
-      nome_obra: nomeObra,
-      ativo: ativo,
-      filialId: filialId,
+      ...formData,
+      valor_previsto: Number(formData.valor_previsto) || 0,
+      orcamento_previsto: Number(formData.orcamento_previsto) || 0,
+      status: Number(formData.status),
+      clienteId: formData.clienteId || null, // Trata cliente vazio
     };
 
-    axios
-      .post(`${API_URL}/OBRAS`, payload, config)
-      .then(() => {
-        alert("Obra cadastrada com sucesso!");
-
-        navigate("/obras");
-      })
-      .catch((erro) => {
-        console.error(erro);
-
-        alert("Erro ao cadastrar obra.");
-      });
-  }
-
-  const inputCls = "w-full px-3 py-2.5 mt-1.5 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-flow-400 focus:border-transparent";
-  const labelCls = "text-sm font-medium text-slate-700";
+    try {
+      await axios.post(`${API_URL}/obras`, payload, config);
+      navigate("/obras");
+    } catch (error) {
+      console.error("Erro ao cadastrar obra:", error);
+      setErro("Erro ao cadastrar obra. Verifique os dados e tente novamente.");
+    } finally {
+      setCarregando(false);
+    }
+  };
 
   return (
-    <div className="flex justify-center">
-      <form
-        onSubmit={salvarObra}
-        className="w-full max-w-lg bg-white rounded-xl border border-slate-200 shadow-sm p-6"
-      >
-        <h2 className="font-display font-semibold text-lg text-slate-800 mb-5">
-          Cadastro de Obras
-        </h2>
-
-        <div className="mb-4">
-          <label className={labelCls}>Nome da Obra</label>
-
-          <input
-            type="text"
-            value={nomeObra}
-            onChange={(e) => setNomeObra(e.target.value)}
-            placeholder="Ex: Hospital Moinhos de Vento"
-            className={inputCls}
-          />
-        </div>
-
-        <div className="mb-4">
-          <label className={labelCls}>Filial</label>
-
-          <select
-            value={filialId}
-            onChange={(e) => setFilialId(e.target.value)}
-            className={`${inputCls} bg-white`}
+    <div className="max-w-4xl w-full mx-auto font-body pb-12">
+      
+      <header className="mb-8 flex items-center justify-between">
+        <div>
+          <Link 
+            to="/obras" 
+            className="inline-flex items-center gap-2 text-sm font-medium text-hidrotec-4 hover:text-hidrotec-1 transition-colors mb-4"
           >
-            <option value="">Selecione...</option>
-
-            {filiais.map((filial) => (
-              <option key={filial.id} value={filial.id}>
-                {filial.nome}
-              </option>
-            ))}
-          </select>
+            <ArrowLeft size={16} />
+            Voltar para lista
+          </Link>
+          <h1 className="text-3xl font-display font-semibold text-hidrotec-3 mb-2 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-extra flex items-center justify-center">
+              <Building2 className="w-5 h-5 text-hidrotec-1" strokeWidth={2} />
+            </div>
+            Nova Obra
+          </h1>
+          <p className="text-sm text-hidrotec-4">
+            Preencha todos os dados técnicos e financeiros do empreendimento.
+          </p>
         </div>
+      </header>
 
-        <div className="mb-6 flex items-center gap-2.5">
-          <input
-            type="checkbox"
-            checked={ativo}
-            onChange={(e) => setAtivo(e.target.checked)}
-            className="w-4 h-4 accent-flow-500 cursor-pointer"
-          />
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <form onSubmit={salvarObra} className="p-8">
+          
+          {erro && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 text-red-600">
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+              <p className="text-sm font-medium">{erro}</p>
+            </div>
+          )}
 
-          <label className="text-sm text-slate-700">Obra Ativa</label>
-        </div>
+          <div className="space-y-6">
+            
+            {/* Bloco 1: Identificação */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2">
+                  Nome da Obra *
+                </label>
+                <input
+                  type="text"
+                  name="nome_obra"
+                  required
+                  value={formData.nome_obra}
+                  onChange={handleChange}
+                  placeholder="Ex: Hospital Moinhos de Vento"
+                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2">
+                  CNO
+                </label>
+                <input
+                  type="text"
+                  name="cno"
+                  value={formData.cno}
+                  onChange={handleChange}
+                  placeholder="Ex: 12.345.67890/12"
+                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3"
+                />
+              </div>
+            </div>
 
-        <div className="flex justify-between gap-3">
-          <button
-            type="submit"
-            className="flex-1 inline-flex items-center justify-center gap-2 py-2.5 rounded-lg bg-success-500 hover:bg-green-700 text-white text-sm font-semibold transition-colors"
-          >
-            <Save className="w-4 h-4" />
-            Salvar
-          </button>
+            {/* Bloco 2: Endereço */}
+            <div>
+              <label className="block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2">
+                Endereço e Localização
+              </label>
+              <input
+                type="text"
+                name="endereco_localizacao"
+                value={formData.endereco_localizacao}
+                onChange={handleChange}
+                placeholder="Rua, Número, Bairro - Cidade/UF"
+                className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3"
+              />
+            </div>
 
-          <button
-            type="button"
-            onClick={() => navigate("/obras")}
-            className="flex-1 py-2.5 rounded-lg bg-slate-500 hover:bg-slate-600 text-white text-sm font-semibold transition-colors"
-          >
-            Cancelar
-          </button>
-        </div>
-      </form>
+            {/* Bloco 3: Relacionamentos (Cliente e Filial) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-5 bg-slate-50/50 rounded-xl border border-slate-100">
+              <div>
+                <label className="block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2">
+                  Cliente Proprietário
+                </label>
+                <select
+                  name="clienteId"
+                  value={formData.clienteId}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3 bg-white"
+                >
+                  <option value="">Selecione um cliente (Opcional)...</option>
+                  {clientes.map((cliente) => (
+                    <option key={cliente.id} value={cliente.id}>
+                      {cliente.razaoSocial || cliente.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2">
+                  Filial Responsável *
+                </label>
+                <select
+                  name="filialId"
+                  required
+                  value={formData.filialId}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3 bg-white"
+                >
+                  <option value="">Selecione uma filial...</option>
+                  {filiais.map((filial) => (
+                    <option key={filial.id} value={filial.id}>
+                      {filial.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Bloco 4: Financeiro e Status */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2">
+                  Valor Previsto (R$)
+                </label>
+                <input
+                  type="number"
+                  name="valor_previsto"
+                  step="0.01"
+                  min="0"
+                  value={formData.valor_previsto}
+                  onChange={handleChange}
+                  placeholder="0.00"
+                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2">
+                  Orçamento Previsto (R$)
+                </label>
+                <input
+                  type="number"
+                  name="orcamento_previsto"
+                  step="0.01"
+                  min="0"
+                  value={formData.orcamento_previsto}
+                  onChange={handleChange}
+                  placeholder="0.00"
+                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2">
+                  Status da Obra
+                </label>
+                <select
+                  name="status"
+                  value={formData.status}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3 bg-white"
+                >
+                  <option value={1}>1 - Em Andamento</option>
+                  <option value={2}>2 - Pausada</option>
+                  <option value={3}>3 - Finalizada</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Checkbox Ativo */}
+            <div className="flex items-center mt-4 pt-4 border-t border-slate-100">
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <div className="relative flex items-center">
+                  <input
+                    type="checkbox"
+                    name="ativo"
+                    checked={formData.ativo}
+                    onChange={handleChange}
+                    className="w-5 h-5 border-2 border-slate-300 rounded text-hidrotec-2 focus:ring-hidrotec-2 focus:ring-offset-0 transition-colors cursor-pointer"
+                  />
+                </div>
+                <span className="text-sm font-medium text-hidrotec-3 group-hover:text-hidrotec-1 transition-colors">
+                  Registo Ativo no sistema
+                </span>
+              </label>
+            </div>
+            
+          </div>
+
+          {/* Botões */}
+          <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-end gap-3">
+            <Link
+              to="/obras"
+              className="px-5 py-2.5 text-sm font-medium text-slate-500 hover:text-hidrotec-3 transition-colors"
+            >
+              Cancelar
+            </Link>
+            <button
+              type="submit"
+              disabled={carregando}
+              className="bg-hidrotec-1 hover:bg-hidrotec-2 text-white px-6 py-2.5 rounded-xl font-medium text-sm transition-all flex items-center gap-2 shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {carregando ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  A salvar...
+                </>
+              ) : (
+                <>
+                  <Save size={18} />
+                  Salvar Obra
+                </>
+              )}
+            </button>
+          </div>
+          
+        </form>
+      </div>
     </div>
   );
 }
-
-export default ObrasCadastro;
