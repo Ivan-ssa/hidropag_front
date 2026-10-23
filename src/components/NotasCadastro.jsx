@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Save, FileText, UploadCloud, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Save, FileText, UploadCloud, AlertCircle, CheckCircle } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export default function NotasCadastro() {
   const navigate = useNavigate();
   
-  // Estados originais do Ivan mantidos integralmente
   const [obras, setObras] = useState([]);
   const [arquivo, setArquivo] = useState(null);
   const [erro, setErro] = useState(null);
+  const [sucesso, setSucesso] = useState(null);
   
   const [nota, setNota] = useState({
     numero_nf: '',
@@ -48,17 +48,16 @@ export default function NotasCadastro() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErro(null);
+    setSucesso(null);
 
-    // Validação original mantida
     if (!nota.obraId || !nota.numero_nf) {
       setErro("Preencha o Número da NF e selecione uma Obra!");
       return;
     }
 
     try {
-      // 1. O PAYLOAD AGORA É JSON E VAI PARA A ROTA CORRETA DE CRIAÇÃO
       const payload = {
-        numero_nf: Number(nota.numero_nf),
+        numero_nf: String(nota.numero_nf),
         fornecedor: nota.fornecedor,
         data_vencimento: nota.data_vencimento || null,
         valor_total: Number(nota.valor_total),
@@ -70,7 +69,6 @@ export default function NotasCadastro() {
       const resNota = await axios.post(`${API_URL}/notas-fiscais`, payload, config);
       const notaCriadaId = resNota.data.id;
 
-      // 2. SE HOUVER ARQUIVO, FAZEMOS O UPLOAD NA ROTA ESPECÍFICA DE ARQUIVOS
       if (arquivo && notaCriadaId) {
         const fileData = new FormData();
         fileData.append("file", arquivo);
@@ -80,8 +78,11 @@ export default function NotasCadastro() {
         });
       }
 
-      alert("Nota cadastrada com sucesso!");
-      navigate('/notas');
+      setSucesso("Nota fiscal cadastrada com sucesso! A redirecionar...");
+      
+      setTimeout(() => {
+        navigate('/notas');
+      }, 1500);
 
     } catch (erro) {
       console.error("Erro ao cadastrar nota:", erro);
@@ -93,7 +94,6 @@ export default function NotasCadastro() {
     }
   };
 
-  // Classes visuais do novo padrão Hidrotec
   const inputCls = "w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3";
   const labelCls = "block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2";
 
@@ -131,12 +131,19 @@ export default function NotasCadastro() {
             </div>
           )}
 
+          {sucesso && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-100 rounded-xl flex items-start gap-3 text-green-600">
+              <CheckCircle className="w-5 h-5 shrink-0 mt-0.5" />
+              <p className="text-sm font-medium">{sucesso}</p>
+            </div>
+          )}
+
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               
               <div>
                 <label className={labelCls}>Número da NF: *</label>
-                <input type="number" name="numero_nf" value={nota.numero_nf} onChange={handleChange} className={inputCls} required placeholder="Ex: 123456" />
+                <input type="text" name="numero_nf" value={nota.numero_nf} onChange={handleChange} className={inputCls} required placeholder="Ex: 123456" />
               </div>
 
               <div>
