@@ -11,6 +11,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [mostrarSenha, setMostrarSenha] = useState(false);
+  const [mostrarAjudaSenha, setMostrarAjudaSenha] = useState(false);
   const [erro, setErro] = useState('');
 
   // Lógica original preservada: Verifica se já está logado
@@ -130,7 +131,8 @@ export default function Login() {
               />
               <button
                 type="button"
-                onClick={() => setSenha(mostrarSenha => !mostrarSenha)}
+                onClick={() => setMostrarSenha(atual => !atual)}
+                aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
                 className="absolute inset-y-0 right-0 pr-4 flex items-center text-hidrotec-4 hover:text-hidrotec-3 transition-colors"
               >
                 {mostrarSenha ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -139,10 +141,19 @@ export default function Login() {
             
             {/* Link Esqueci a senha */}
             <div className="flex justify-end pt-1">
-              <a href="#" className="text-xs font-medium text-hidrotec-4 hover:text-hidrotec-1 transition-colors">
+              <button
+                type="button"
+                onClick={() => setMostrarAjudaSenha(atual => !atual)}
+                className="text-xs font-medium text-hidrotec-4 hover:text-hidrotec-1 transition-colors cursor-pointer"
+              >
                 Esqueci minha senha
-              </a>
+              </button>
             </div>
+            {mostrarAjudaSenha && (
+              <p className="text-xs text-hidrotec-4 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2.5 leading-relaxed">
+                Para redefinir sua senha, peça a quem administra o sistema. Essa pessoa pode definir uma nova senha na tela de Usuários.
+              </p>
+            )}
           </div>
 
           {/* Botão Entrar */}
