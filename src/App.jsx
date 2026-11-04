@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { Droplets } from "lucide-react";
 import { PrivateRoute } from "./components/PrivateRoute";
@@ -25,7 +26,7 @@ import AprovacoesCadastro from "./components/AprovacoesCadastro";
 
 import Configuracoes from './components/Configuracoes';
 import Fornecedores from './components/Fornecedores'; 
-import Clientes from './components/Clientes'; // <-- 1. IMPORTAMOS A TELA DE CLIENTES AQUI
+import Clientes from './components/Clientes';
 
 export const getPerfil = () => localStorage.getItem("usuarioPerfil");
 
@@ -44,15 +45,36 @@ function EmConstrucao({ modulo }) {
 }
 
 function Inicio() {
+  const [usuarioNome, setUsuarioNome] = useState('');
+  const [usuarioPerfil, setUsuarioPerfil] = useState('');
+
+  useEffect(() => {
+    // Pega o nome e o perfil salvos no localStorage (ajuste as chaves se necessário)
+    const nomeSalvo = localStorage.getItem('usuarioNome') || localStorage.getItem('nome') || 'Usuário';
+    let perfilSalvo = localStorage.getItem('usuarioPerfil') || localStorage.getItem('perfil') || 'Convidado';
+    
+    // Capitaliza a primeira letra do perfil (ex: 'root' ou 'admin' fica com letra maiúscula)
+    perfilSalvo = perfilSalvo.charAt(0).toUpperCase() + perfilSalvo.slice(1);
+
+    setUsuarioNome(nomeSalvo);
+    setUsuarioPerfil(perfilSalvo);
+  }, []);
+
   return (
     <div className="max-w-2xl">
       <div className="bg-white border border-slate-200 rounded-xl p-8 shadow-sm">
         <div className="w-12 h-12 rounded-xl bg-extra flex items-center justify-center mb-4">
           <Droplets className="w-6 h-6 text-hidrotec-1 fill-extra" />
         </div>
-        <h2 className="font-display font-semibold text-2xl text-hidrotec-3 mb-2">
-          Bem-vindo ao sistema HidroPag!
+        
+        <h2 className="font-display font-semibold text-2xl text-hidrotec-3 mb-1">
+          Bem-vindo, {usuarioNome}!
         </h2>
+        
+        <p className="text-sm font-medium text-hidrotec-1 mb-4">
+          Tipo de acesso: <span className="uppercase bg-extra px-2 py-0.5 rounded-md text-xs">{usuarioPerfil}</span>
+        </p>
+
         <p className="text-hidrotec-4 leading-relaxed">
           Use o menu ao lado para gerenciar filiais, usuários, obras e notas
           fiscais.
@@ -112,7 +134,6 @@ function App() {
           
           <Route path="/fornecedores" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><Fornecedores /></PrivateRoute>} />
           
-          {/* 2. ADICIONAMOS A ROTA DE CLIENTES AQUI */}
           <Route path="/clientes" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><Clientes /></PrivateRoute>} />
         </Route>
 

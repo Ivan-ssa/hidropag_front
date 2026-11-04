@@ -7,14 +7,12 @@ export default function ObrasCadastro() {
   const navigate = useNavigate();
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
-  // Estado único para todos os campos baseados na sua entidade NestJS
   const [formData, setFormData] = useState({
     nome_obra: '',
     cno: '',
     endereco_localizacao: '',
     valor_previsto: '',
-    orcamento_previsto: '',
-    status: 1, // 1 (Em Andamento), 2 (Pausada), 3 (Finalizada)
+    status: 1,
     ativo: true,
     filialId: '',
     clienteId: ''
@@ -37,30 +35,55 @@ export default function ObrasCadastro() {
   const carregarFiliais = async () => {
     try {
       const response = await axios.get(`${API_URL}/filiais`, config);
-      setFiliais(response.data.sort((a, b) => a.nome.localeCompare(b.nome)));
+      const lista = Array.isArray(response.data) ? response.data : (response.data?.data || []);
+      setFiliais(lista.sort((a, b) => (a.nome || '').localeCompare(b.nome || '')));
     } catch (error) {
-      console.error(error);
+      console.error("Erro ao carregar filiais:", error);
       setErro("Não foi possível carregar a lista de filiais.");
     }
   };
 
+  // 2. Busca e normalização robusta dos clientes
   const carregarClientes = async () => {
     try {
       const response = await axios.get(`${API_URL}/clientes`, config);
-      setClientes(response.data.sort((a, b) => {
-        const nomeA = a.razaoSocial || a.nome || '';
-        const nomeB = b.razaoSocial || b.nome || '';
+      
+      // Suporta retorno direto como Array ou com paginação (.data / .items)
+      let lista = [];
+      if (Array.isArray(response.data)) {
+        lista = response.data;
+      } else if (Array.isArray(response.data?.data)) {
+        lista = response.data.data;
+      } else if (Array.isArray(response.data?.items)) {
+        lista = response.data.items;
+      }
+
+      const ordenados = lista.sort((a, b) => {
+        const nomeA = a.razao_social || a.razaoSocial || a.nome || '';
+        const nomeB = b.razao_social || b.razaoSocial || b.nome || '';
         return nomeA.localeCompare(nomeB);
-      }));
+      });
+
+      setClientes(ordenados);
     } catch (error) {
-      console.error(error);
+      console.error("Erro ao carregar clientes:", error);
       setErro("Não foi possível carregar a lista de clientes.");
     }
   };
 
-  // Função genérica para atualizar qualquer campo do formulário
+  // 1. Controle no handleChange para CNO aceitar apenas números e no máximo 12 dígitos
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+
+    if (name === 'cno') {
+      const apenasNumeros = value.replace(/\D/g, '').slice(0, 12);
+      setFormData(prev => ({
+        ...prev,
+        cno: apenasNumeros
+      }));
+      return;
+    }
+
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
@@ -71,20 +94,28 @@ export default function ObrasCadastro() {
     e.preventDefault();
 
     if (!formData.nome_obra || !formData.filialId) {
-      setErro("Preencha todos os campos obrigatórios (Nome e Filial).");
+      setErro("Preencha todos os campos obrigatórios (Nome da Obra e Filial).");
+      return;
+    }
+
+    // Validação estrita: se informado, deve ter exatamente 12 números
+    if (formData.cno && formData.cno.length !== 12) {
+      setErro("O CNO deve conter exatamente 12 números (atualmente tem " + formData.cno.length + ").");
       return;
     }
 
     setCarregando(true);
     setErro(null);
 
-    // Formatação do payload exatamente como a sua API espera
     const payload = {
-      ...formData,
+      nome_obra: formData.nome_obra.trim(),
+      endereco_localizacao: formData.endereco_localizacao?.trim() || null,
       valor_previsto: Number(formData.valor_previsto) || 0,
-      orcamento_previsto: Number(formData.orcamento_previsto) || 0,
       status: Number(formData.status),
-      clienteId: formData.clienteId || null, // Trata cliente vazio
+      ativo: Boolean(formData.ativo),
+      filialId: Number(formData.filialId) || formData.filialId,
+      clienteId: formData.clienteId ? (Number(formData.clienteId) || formData.clienteId) : null,
+      cno: formData.cno ? formData.cno : null
     };
 
     try {
@@ -92,7 +123,14 @@ export default function ObrasCadastro() {
       navigate("/obras");
     } catch (error) {
       console.error("Erro ao cadastrar obra:", error);
-      setErro("Erro ao cadastrar obra. Verifique os dados e tente novamente.");
+      const detalhes = error.response?.data?.message;
+      if (Array.isArray(detalhes)) {
+        setErro(detalhes.join(" | "));
+      } else if (typeof detalhes === "string") {
+        setErro(detalhes);
+      } else {
+        setErro("Erro ao cadastrar obra. Verifique os dados e tente novamente.");
+      }
     } finally {
       setCarregando(false);
     }
@@ -100,7 +138,6 @@ export default function ObrasCadastro() {
 
   return (
     <div className="max-w-4xl w-full mx-auto font-body pb-12">
-      
       <header className="mb-8 flex items-center justify-between">
         <div>
           <Link 
@@ -124,7 +161,6 @@ export default function ObrasCadastro() {
 
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         <form onSubmit={salvarObra} className="p-8">
-          
           {erro && (
             <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 text-red-600">
               <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
@@ -133,7 +169,6 @@ export default function ObrasCadastro() {
           )}
 
           <div className="space-y-6">
-            
             {/* Bloco 1: Identificação */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="md:col-span-2">
@@ -153,14 +188,16 @@ export default function ObrasCadastro() {
               
               <div>
                 <label className="block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2">
-                  CNO
+                  CNO (12 números) {formData.cno && `(${formData.cno.length}/12)`}
                 </label>
                 <input
                   type="text"
+                  inputMode="numeric"
                   name="cno"
+                  maxLength={12}
                   value={formData.cno}
                   onChange={handleChange}
-                  placeholder="Ex: 12.345.67890/12"
+                  placeholder="Ex: 000000000000"
                   className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3"
                 />
               </div>
@@ -196,7 +233,7 @@ export default function ObrasCadastro() {
                   <option value="">Selecione um cliente (Opcional)...</option>
                   {clientes.map((cliente) => (
                     <option key={cliente.id} value={cliente.id}>
-                      {cliente.razaoSocial || cliente.nome}
+                      {cliente.razao_social || cliente.razaoSocial || cliente.nome || `Cliente #${cliente.id}`}
                     </option>
                   ))}
                 </select>
@@ -224,7 +261,7 @@ export default function ObrasCadastro() {
             </div>
 
             {/* Bloco 4: Financeiro e Status */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2">
                   Valor Previsto (R$)
@@ -235,22 +272,6 @@ export default function ObrasCadastro() {
                   step="0.01"
                   min="0"
                   value={formData.valor_previsto}
-                  onChange={handleChange}
-                  placeholder="0.00"
-                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2">
-                  Orçamento Previsto (R$)
-                </label>
-                <input
-                  type="number"
-                  name="orcamento_previsto"
-                  step="0.01"
-                  min="0"
-                  value={formData.orcamento_previsto}
                   onChange={handleChange}
                   placeholder="0.00"
                   className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3"
@@ -287,11 +308,10 @@ export default function ObrasCadastro() {
                   />
                 </div>
                 <span className="text-sm font-medium text-hidrotec-3 group-hover:text-hidrotec-1 transition-colors">
-                  Registo Ativo no sistema
+                  Registro Ativo no sistema
                 </span>
               </label>
             </div>
-            
           </div>
 
           {/* Botões */}
@@ -320,7 +340,6 @@ export default function ObrasCadastro() {
               )}
             </button>
           </div>
-          
         </form>
       </div>
     </div>
