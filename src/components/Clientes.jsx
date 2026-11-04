@@ -222,6 +222,7 @@ export default function Clientes() {
     }
   };
 
+  // Alterado para PATCH com { ativo: false } exatamente igual ao Fornecedores
   const removerCliente = async (cliente) => {
     const nomeExibicao = cliente.tipo_pessoa === 'PJ' ? cliente.razao_social : cliente.nome;
     const confirmou = window.confirm(
@@ -234,14 +235,15 @@ export default function Clientes() {
     setProcessandoId(cliente.id);
 
     try {
-      await axios.delete(`${API_URL}/clientes/${cliente.id}`, {
+      await axios.patch(`${API_URL}/clientes/${cliente.id}`, { ativo: false }, {
         headers: { Authorization: `Bearer ${tokenSalvo}` }
       });
       setAviso({ tipo: "sucesso", texto: `Cliente "${nomeExibicao}" foi inativado com sucesso.` });
       await carregarClientes();
     } catch (erro) {
       console.error("Erro ao inativar:", erro);
-      setAviso({ tipo: "erro", texto: "Falha ao inativar o cliente." });
+      const msg = erro.response?.data?.message || "Falha ao inativar o cliente.";
+      setAviso({ tipo: "erro", texto: typeof msg === 'string' ? msg : JSON.stringify(msg) });
     } finally {
       setProcessandoId(null);
     }
@@ -260,7 +262,8 @@ export default function Clientes() {
       await carregarClientes();
     } catch (erro) {
       console.error("Erro ao reativar:", erro);
-      setAviso({ tipo: "erro", texto: "Falha ao reativar o cliente." });
+      const msg = erro.response?.data?.message || "Falha ao reativar o cliente.";
+      setAviso({ tipo: "erro", texto: typeof msg === 'string' ? msg : JSON.stringify(msg) });
     } finally {
       setProcessandoId(null);
     }
@@ -270,7 +273,8 @@ export default function Clientes() {
   const totalInativos = clientes.length - totalAtivos;
 
   const clientesFiltrados = clientes.filter(c => {
-    const estaAtivo = c.ativo !== false && !c.deletedAt;
+    
+    const estaAtivo = c.ativo !== false && !c.deleted_at && !c.deletedAt;
     if (estaAtivo !== mostrarAtivos) return false;
 
     const termo = busca.toLowerCase();
