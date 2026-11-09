@@ -7,87 +7,76 @@
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   FileText, Plus, Search, CheckCircle, XCircle, Clock, Eye,
   AlertCircle, X, Send, Loader2, MessageSquare, Filter, RotateCcw,
-  Paperclip, ExternalLink, Pencil
+  Paperclip, ExternalLink, Pencil, Building2
 } from 'lucide-react';
 
 export default function NotasList() {
   // -------------------------------------------------------------------
-  // CONFIGURAÇÃO DA API
+  // CONFIGURAÇÃO DA API E PARÂMETROS DA URL
   // -------------------------------------------------------------------
-  // URL base do backend (vem do arquivo .env; se não existir, usa localhost)
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-  // Token salvo no login. É enviado em toda requisição para provar quem é o usuário.
   const token = localStorage.getItem('tokenHidropag');
   const config = { headers: { Authorization: `Bearer ${token}` } };
 
-  // -------------------------------------------------------------------
-  // DADOS DO USUÁRIO LOGADO (salvos no localStorage durante o login)
-  // -------------------------------------------------------------------
+  // Captura parâmetros da URL (ex: ?obraId=123)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const obraIdFiltro = searchParams.get('obraId');
+
+  // DADOS DO USUÁRIO LOGADO
   const nome = localStorage.getItem('usuarioNome') || 'Usuário';
   const perfil = localStorage.getItem('usuarioPerfil');
-
-  // ID do usuário logado. É enviado no registro da aprovação.
-  // ATENÇÃO: confirme se o Login.jsx salva com o nome "usuarioId".
   const usuarioId = localStorage.getItem('usuarioId');
-
-  // Só estes perfis veem os botões de Aprovar/Reprovar.
-  // ATENÇÃO: essa regra é uma sugestão. Ajuste a lista se a regra do sistema for outra.
   const podeAvaliar = ['root', 'gestor'].includes(perfil);
 
-  // Saudação de acordo com a hora do dia
   const hora = new Date().getHours();
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
 
   // -------------------------------------------------------------------
-  // ESTADOS (dados que a tela guarda e que, ao mudar, atualizam a tela)
+  // ESTADOS
   // -------------------------------------------------------------------
-  const [notas, setNotas] = useState([]);                       // lista de notas vinda da API
-  const [busca, setBusca] = useState('');                       // texto digitado na busca
-  const [filtroStatus, setFiltroStatus] = useState('todas');    // aba selecionada
-  const [filtroVencimento, setFiltroVencimento] = useState(''); // data escolhida no filtro
-  const [carregando, setCarregando] = useState(true);           // true enquanto busca na API
-  const [erro, setErro] = useState(null);                       // mensagem de erro, se houver
+  const [notas, setNotas] = useState([]);                      
+  const [busca, setBusca] = useState('');                      
+  const [filtroStatus, setFiltroStatus] = useState('todas');   
+  const [filtroVencimento, setFiltroVencimento] = useState(''); 
+  const [carregando, setCarregando] = useState(true);          
+  const [erro, setErro] = useState(null);                      
 
   // Estados do modal de Aprovar / Reprovar
   const [modalAberto, setModalAberto] = useState(false);
-  const [tipoAcao, setTipoAcao] = useState(null);               // 'aprovar' ou 'reprovar'
-  const [notaSelecionada, setNotaSelecionada] = useState(null); // nota que está sendo avaliada
-  const [mensagem, setMensagem] = useState('');                 // parecer digitado
-  const [processando, setProcessando] = useState(false);        // true enquanto envia a decisão
+  const [tipoAcao, setTipoAcao] = useState(null);               
+  const [notaSelecionada, setNotaSelecionada] = useState(null); 
+  const [mensagem, setMensagem] = useState('');                 
+  const [processando, setProcessando] = useState(false);        
 
-  // Modal de visualização do PDF: guarda a nota que está sendo visualizada
-  // (null = modal fechado)
+  // Modal de visualização do PDF
   const [notaPdf, setNotaPdf] = useState(null);
 
-  // Modal de edição da nota (caneta): guarda a nota sendo editada (null = fechado)
+  // Modal de edição da nota
   const [notaEditando, setNotaEditando] = useState(null);
-  const [formEdicao, setFormEdicao] = useState({});          // campos do formulário de edição
-  const [arquivoEdicao, setArquivoEdicao] = useState(null);  // novo PDF escolhido (opcional)
+  const [formEdicao, setFormEdicao] = useState({});          
+  const [arquivoEdicao, setArquivoEdicao] = useState(null);  
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
 
-  // Perfis que podem editar notas.
-  // ATENÇÃO: sugestão minha. Ajuste a lista se a regra do sistema for outra.
   const podeEditar = ['root', 'gestor', 'lancador'].includes(perfil);
 
   // -------------------------------------------------------------------
   // CARREGAR NOTAS
-  // Roda uma vez, quando a tela abre.
   // -------------------------------------------------------------------
   useEffect(() => {
     carregarNotas();
-  }, []);
+  }, [obraIdFiltro]); // Recarrega se o filtro de obra na URL mudar
 
   const carregarNotas = async () => {
     try {
       setCarregando(true);
-      // IMPORTANTE: a rota certa no backend é /notas (NÃO /notas-fiscais, que dava 404)
+      // Se houver um obraId na URL, podemos tentar filtrar na API ou buscar todas e filtrar no front.
+      // Buscando a rota geral /notas:
       const resposta = await axios.get(`${API_URL}/notas`, config);
-      // Aceita lista direta ou objeto com a lista dentro (ex: { data: [...] })
       const dados = resposta.data;
       setNotas(Array.isArray(dados) ? dados : (dados.data || dados.notas || []));
       setErro(null);
@@ -102,8 +91,6 @@ export default function NotasList() {
   // -------------------------------------------------------------------
   // MODAL DE AÇÃO
   // -------------------------------------------------------------------
-
-  // Abre o modal para aprovar ou reprovar uma nota específica
   const abrirModalAcao = (nota, acao) => {
     setNotaSelecionada(nota);
     setTipoAcao(acao);
@@ -111,49 +98,34 @@ export default function NotasList() {
     setModalAberto(true);
   };
 
-  // Envia a decisão (aprovar/reprovar) para o backend
   const confirmarAcao = async (e) => {
-    e.preventDefault(); // evita recarregar a página ao enviar o formulário
+    e.preventDefault(); 
     if (!notaSelecionada) return;
 
     try {
       setProcessando(true);
-
-      // Status: 0 = pendente, 1 = aprovada, 2 = reprovada
       const novoStatus = tipoAcao === 'aprovar' ? 1 : 2;
 
-      // Mesmo fluxo da tela de Aprovações, em dois passos:
-
-      // 1) Registra a decisão e o parecer na rota /aprovacoes.
-      //    O backend espera exatamente estes nomes de campo:
-      //    decisao (1 = aprovada, 2 = reprovada), observacao (o parecer),
-      //    nota (UUID da nota) e usuario (UUID de quem decidiu).
       const payloadAprovacao = {
         decisao: novoStatus,
         observacao: mensagem,
         nota: notaSelecionada.id,
-        usuario: usuarioId, // é um UUID (texto), não converta para número
+        usuario: usuarioId,
       };
       await axios.post(`${API_URL}/aprovacoes`, payloadAprovacao, config);
-
-      // 2) Atualiza só o status da nota. Usamos PUT porque o PATCH dava
-      //    "erro de rede" (o CORS do backend não libera esse método) e
-      //    porque esta rota não aceita o campo "parecer".
       await axios.put(`${API_URL}/notas/${notaSelecionada.id}`, { status: novoStatus }, config);
 
       alert(`Nota fiscal ${tipoAcao === 'aprovar' ? 'aprovada' : 'reprovada'} com sucesso!`);
       setModalAberto(false);
       setNotaSelecionada(null);
-      carregarNotas(); // recarrega a lista para mostrar o novo status
+      carregarNotas(); 
     } catch (error) {
       console.error('Erro completo da API:', error);
       if (error.response && error.response.data) {
-        // O servidor respondeu com um erro: mostra a mensagem dele
         const msgServidor = error.response.data.message || error.response.data;
         alert(`O back-end recusou a alteração: ${JSON.stringify(msgServidor)}`);
       } else {
-        // Nem chegou resposta do servidor (rede, CORS ou servidor fora do ar)
-        alert(`Erro de rede: a rota PUT /notas/${notaSelecionada.id} falhou. Verifique o CORS ou se o servidor está no ar.`);
+        alert(`Erro de rede: a rota PUT /notas/${notaSelecionada.id} falhou.`);
       }
     } finally {
       setProcessando(false);
@@ -161,15 +133,12 @@ export default function NotasList() {
   };
 
   // -------------------------------------------------------------------
-  // EDIÇÃO DE NOTA (caneta)
+  // EDIÇÃO DE NOTA
   // -------------------------------------------------------------------
-
-  // Abre o modal já preenchido com os dados atuais da nota
   const abrirEdicao = (nota) => {
     setNotaEditando(nota);
     setFormEdicao({
       numero_nf: nota.numero_nf || '',
-      // O campo de data precisa do formato AAAA-MM-DD
       data_vencimento: nota.data_vencimento ? String(nota.data_vencimento).slice(0, 10) : '',
       valor_total: nota.valor_total ?? '',
       quant_parcelas: nota.quant_parcelas || 1,
@@ -177,23 +146,17 @@ export default function NotasList() {
     setArquivoEdicao(null);
   };
 
-  // Atualiza o campo digitado no formulário de edição
   const handleEdicaoChange = (e) => {
     const { name, value } = e.target;
     setFormEdicao(prev => ({ ...prev, [name]: value }));
   };
 
-  // Salva as alterações no backend
   const salvarEdicao = async (e) => {
     e.preventDefault();
     if (!notaEditando) return;
 
     try {
       setSalvandoEdicao(true);
-
-      // Só enviamos campos que sabemos que existem na tabela "notas".
-      // Fornecedor e obra ficaram de fora porque ainda não confirmamos os nomes
-      // que o backend aceita.
       const payload = {
         numero_nf: String(formEdicao.numero_nf),
         data_vencimento: formEdicao.data_vencimento || null,
@@ -201,11 +164,8 @@ export default function NotasList() {
         quant_parcelas: Number(formEdicao.quant_parcelas),
       };
 
-      // 1) Atualiza os dados da nota
       await axios.put(`${API_URL}/notas/${notaEditando.id}`, payload, config);
 
-      // 2) Se escolheu um novo PDF, envia na rota de upload (a mesma da versão antiga).
-      //    O nome do campo precisa ser exatamente "file".
       if (arquivoEdicao) {
         const formData = new FormData();
         formData.append('file', arquivoEdicao);
@@ -215,7 +175,7 @@ export default function NotasList() {
       alert('Nota atualizada com sucesso!');
       setNotaEditando(null);
       setArquivoEdicao(null);
-      carregarNotas(); // recarrega a lista com os dados novos
+      carregarNotas(); 
     } catch (error) {
       console.error('Erro ao atualizar nota:', error);
       const msg = error.response?.data?.message;
@@ -226,34 +186,39 @@ export default function NotasList() {
   };
 
   // -------------------------------------------------------------------
-  // CONTADORES DOS CARDS DE RESUMO
+  // CONTADORES DOS CARDS DE RESUMO (Consideram o filtro de obra se houver)
   // -------------------------------------------------------------------
-  const totalDecidir = notas.filter(n => Number(n.status) === 0).length;
-  const totalAprovadas = notas.filter(n => Number(n.status) === 1).length;
-  const totalLancado = notas.length;
+  const notasBaseResumo = obraIdFiltro 
+    ? notas.filter(n => String(n.obraId || n.obra?.id) === String(obraIdFiltro))
+    : notas;
 
-  // -------------------------------------------------------------------
-  // NOME DO FORNECEDOR
-  // O backend pode mandar o fornecedor como texto OU como objeto
-  // (ex: { id: 1, razao_social: "ABC Ltda" }). Esta função devolve sempre
-  // um texto. Precisa ficar ANTES da filtragem, que a utiliza.
-  // -------------------------------------------------------------------
+  const totalDecidir = notasBaseResumo.filter(n => Number(n.status) === 0).length;
+  const totalAprovadas = notasBaseResumo.filter(n => Number(n.status) === 1).length;
+  const totalLancado = notasBaseResumo.length;
+
   const nomeFornecedor = (f) => {
     if (!f) return '';
     if (typeof f === 'string') return f;
-    // Tenta os nomes de campo mais comuns
     const nome = f.razao_social || f.nome_fantasia || f.nome || f.fornecedor;
     if (typeof nome === 'string') return nome;
-    // Último recurso: pega o primeiro campo de texto que existir no objeto
     const primeiroTexto = Object.values(f).find(v => typeof v === 'string' && v.trim() !== '');
     return primeiroTexto || '';
   };
 
+  // Encontrar o nome da obra para exibir no banner de aviso de filtro
+  const obraAtualObj = notas.find(n => String(n.obraId || n.obra?.id) === String(obraIdFiltro))?.obra;
+  const nomeObraFiltrada = obraAtualObj?.nome_obra || obraAtualObj?.nome || `Obra #${obraIdFiltro}`;
+
   // -------------------------------------------------------------------
   // FILTRAGEM DA TABELA
-  // Combina três filtros: texto, status (abas) e vencimento.
   // -------------------------------------------------------------------
   const notasFiltradas = notas.filter(n => {
+    // 0) Filtro por Obra (se veio na URL ?obraId=...)
+    if (obraIdFiltro) {
+      const idNotaObra = String(n.obraId || n.obra?.id || '');
+      if (idNotaObra !== String(obraIdFiltro)) return false;
+    }
+
     // 1) Busca por texto: número da NF ou nome do fornecedor
     const termo = busca.toLowerCase();
     const numero = String(n.numero_nf || '').toLowerCase();
@@ -267,22 +232,16 @@ export default function NotasList() {
       filtroStatus === 'aprovadas' ? Number(n.status) === 1 :
       filtroStatus === 'reprovadas' ? Number(n.status) === 2 : true;
 
-    // 3) Data de vencimento (compara o texto da data, ex: "2026-10-26")
+    // 3) Data de vencimento
     const matchVencimento = filtroVencimento ? n.data_vencimento?.includes(filtroVencimento) : true;
 
     return matchTexto && matchStatus && matchVencimento;
   });
 
-  // -------------------------------------------------------------------
-  // FUNÇÕES AUXILIARES DE EXIBIÇÃO
-  // -------------------------------------------------------------------
-
-  // Formata número como moeda brasileira (ex: 1500 -> R$ 1.500,00)
   const formatarMoeda = (valor) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
   };
 
-  // Desenha a etiqueta colorida de status
   const renderStatus = (status) => {
     switch (Number(status)) {
       case 1:
@@ -298,7 +257,6 @@ export default function NotasList() {
           </span>
         );
       default:
-        // qualquer outro valor (0) é tratado como pendente
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-50 text-amber-600">
             <Clock size={14} /> Pendente
@@ -307,18 +265,14 @@ export default function NotasList() {
     }
   };
 
-  // Classes de estilo reaproveitadas nos campos do modal
   const inputCls = 'w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3 bg-white';
   const labelCls = 'block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2';
 
-  // -------------------------------------------------------------------
-  // TELA (o que aparece no navegador)
-  // -------------------------------------------------------------------
   return (
     <div className="max-w-6xl w-full mx-auto font-body pb-12">
 
       {/* ---------- Cabeçalho da página ---------- */}
-      <header className="mb-8">
+      <header className="mb-6">
         <h1 className="text-3xl font-display font-semibold text-hidrotec-3 mb-1">
           Notas Fiscais
         </h1>
@@ -326,6 +280,27 @@ export default function NotasList() {
           Listagem e gerenciamento de notas fiscais
         </p>
       </header>
+
+      {/* ---------- Banner de Filtro Ativo por Obra ---------- */}
+      {obraIdFiltro && (
+        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-700 shrink-0">
+              <Building2 size={20} />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-blue-600 uppercase tracking-wider">Filtrando por Obra</p>
+              <p className="text-sm font-semibold text-blue-900">{nomeObraFiltrada}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setSearchParams({})}
+            className="px-4 py-2 bg-white border border-blue-200 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl transition-colors shadow-sm"
+          >
+            Mostrar Todas as Notas
+          </button>
+        </div>
+      )}
 
       {/* ---------- Saudação e cards de resumo ---------- */}
       <div className="mb-8">
@@ -337,8 +312,6 @@ export default function NotasList() {
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-
-          {/* Card: notas aguardando decisão */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
               <Clock size={24} />
@@ -349,7 +322,6 @@ export default function NotasList() {
             </div>
           </div>
 
-          {/* Card: notas aprovadas */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center text-green-600 shrink-0">
               <CheckCircle size={24} />
@@ -360,7 +332,6 @@ export default function NotasList() {
             </div>
           </div>
 
-          {/* Card: total de notas lançadas */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-extra flex items-center justify-center text-hidrotec-1 shrink-0">
               <FileText size={24} />
@@ -370,7 +341,6 @@ export default function NotasList() {
               <p className="text-3xl font-display font-bold text-hidrotec-3">{totalLancado}</p>
             </div>
           </div>
-
         </div>
       </div>
 
@@ -411,7 +381,6 @@ export default function NotasList() {
           </button>
         </div>
 
-        {/* CORRIGIDO: era "/notas/novo", mas a rota no App.jsx é "/notas/nova" */}
         <Link
           to="/notas/nova"
           className="bg-hidrotec-1 hover:bg-hidrotec-2 text-white px-5 py-3 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2 shadow-sm"
@@ -427,7 +396,6 @@ export default function NotasList() {
           <Filter size={16} /> Filtros:
         </div>
 
-        {/* Campo de busca por NF ou fornecedor */}
         <div className="relative flex-1 w-full">
           <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
           <input
@@ -439,7 +407,6 @@ export default function NotasList() {
           />
         </div>
 
-        {/* Filtro por data de vencimento */}
         <div className="flex items-center gap-2 w-full md:w-auto">
           <span className="text-xs font-bold text-hidrotec-4 whitespace-nowrap">Vencimento:</span>
           <input
@@ -450,9 +417,8 @@ export default function NotasList() {
           />
         </div>
 
-        {/* Limpa todos os filtros de uma vez */}
         <button
-          onClick={() => { setBusca(''); setFiltroStatus('todas'); setFiltroVencimento(''); }}
+          onClick={() => { setBusca(''); setFiltroStatus('todas'); setFiltroVencimento(''); setSearchParams({}); }}
           className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-hidrotec-3 border border-slate-200 rounded-xl flex items-center gap-1.5 transition-colors whitespace-nowrap"
         >
           <RotateCcw size={14} /> Limpar Filtros
@@ -462,29 +428,23 @@ export default function NotasList() {
       {/* ---------- Tabela de notas ---------- */}
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto min-h-[300px]">
-
-          {/* Três situações possíveis: carregando, erro, vazio ou tabela com dados */}
           {carregando ? (
-            // 1) Ainda buscando na API
             <div className="flex flex-col items-center justify-center h-64 text-hidrotec-1">
               <Loader2 className="w-8 h-8 animate-spin mb-4" />
               <p className="text-sm font-medium text-hidrotec-4">A carregar notas fiscais...</p>
             </div>
           ) : erro ? (
-            // 2) A busca falhou
             <div className="flex items-center justify-center h-64 text-red-500 font-medium bg-red-50/50">
               <AlertCircle className="w-5 h-5 mr-2" />
               {erro}
             </div>
           ) : notasFiltradas.length === 0 ? (
-            // 3) Buscou, mas nenhuma nota passou nos filtros
             <div className="flex flex-col items-center justify-center h-64 text-hidrotec-4">
               <FileText className="w-12 h-12 mb-3 text-slate-300" strokeWidth={1.5} />
               <p className="font-medium mb-1">Nenhuma nota fiscal encontrada.</p>
               <p className="text-sm">Tente ajustar os filtros ou clique em "Nova Nota".</p>
             </div>
           ) : (
-            // 4) Tem notas para mostrar
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-100 text-[10px] uppercase tracking-wider text-hidrotec-4 bg-slate-50/50">
@@ -499,36 +459,23 @@ export default function NotasList() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {/* Uma linha da tabela para cada nota filtrada */}
                 {notasFiltradas.map((nota) => (
                   <tr key={nota.id} className="hover:bg-slate-50/50 transition-colors group">
-
-                    {/* Número da nota */}
                     <td className="px-6 py-4 font-bold text-hidrotec-3">
                       #{nota.numero_nf}
                     </td>
-
-                    {/* Fornecedor */}
                     <td className="px-6 py-4 text-sm text-hidrotec-4">
                       {nomeFornecedor(nota.fornecedor) || '-'}
                     </td>
-
-                    {/* Obra (o backend pode mandar como nome_obra ou nome) */}
                     <td className="px-6 py-4 text-sm font-medium text-hidrotec-3">
                       {nota.obra?.nome_obra || nota.obra?.nome || '-'}
                     </td>
-
-                    {/* Data de vencimento no formato brasileiro */}
                     <td className="px-6 py-4 text-sm text-hidrotec-4">
                       {nota.data_vencimento ? new Date(nota.data_vencimento).toLocaleDateString('pt-BR') : '-'}
                     </td>
-
-                    {/* Valor total em reais */}
                     <td className="px-6 py-4 text-sm font-bold text-hidrotec-3">
                       {formatarMoeda(nota.valor_total)}
                     </td>
-
-                    {/* Status + parecer (se existir) */}
                     <td className="px-6 py-4 text-center">
                       <div className="flex flex-col items-center gap-1">
                         {renderStatus(nota.status)}
@@ -540,9 +487,6 @@ export default function NotasList() {
                         )}
                       </div>
                     </td>
-
-                    {/* PDF: o backend manda "tem_anexo" (true/false) e "link_pdf" (URL completa).
-                        Se tiver os dois, mostra o botão que abre o modal com o PDF. */}
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-2">
                         {nota.tem_anexo && nota.link_pdf ? (
@@ -561,11 +505,8 @@ export default function NotasList() {
                         )}
                       </div>
                     </td>
-
-                    {/* Botões Aprovar/Reprovar: só para perfis autorizados e notas pendentes */}
                     <td className="px-6 py-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-2">
-                        {/* Caneta: abre o modal de edição da nota */}
                         {podeEditar && (
                           <button
                             onClick={() => abrirEdicao(nota)}
@@ -606,13 +547,10 @@ export default function NotasList() {
         </div>
       </div>
 
-      {/* ---------- Modal de edição da nota (caneta) ---------- */}
-      {/* Aparece quando notaEditando tem uma nota */}
+      {/* ---------- Modal de edição da nota ---------- */}
       {notaEditando && (
         <div className="fixed inset-0 w-screen h-screen bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-[1000] p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden my-8">
-
-            {/* Título e botão de fechar */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <h3 className="font-display font-bold text-lg text-hidrotec-3 flex items-center gap-2">
                 <Pencil className="w-5 h-5 text-hidrotec-1" />
@@ -625,29 +563,24 @@ export default function NotasList() {
 
             <form onSubmit={salvarEdicao} className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
                 <div>
                   <label className={labelCls}>Número da NF *</label>
                   <input type="text" name="numero_nf" value={formEdicao.numero_nf} onChange={handleEdicaoChange} className={inputCls} required />
                 </div>
-
                 <div>
                   <label className={labelCls}>Vencimento</label>
                   <input type="date" name="data_vencimento" value={formEdicao.data_vencimento} onChange={handleEdicaoChange} className={inputCls} />
                 </div>
-
                 <div>
                   <label className={labelCls}>Valor Total (R$)</label>
                   <input type="number" step="0.01" name="valor_total" value={formEdicao.valor_total} onChange={handleEdicaoChange} className={inputCls} />
                 </div>
-
                 <div>
                   <label className={labelCls}>Qtd. de Parcelas</label>
                   <input type="number" min="1" name="quant_parcelas" value={formEdicao.quant_parcelas} onChange={handleEdicaoChange} className={inputCls} />
                 </div>
               </div>
 
-              {/* Troca do PDF (opcional) */}
               <div className="mt-4 p-4 bg-slate-50/50 rounded-xl border border-slate-200 border-dashed">
                 <label className={labelCls}>Atualizar Arquivo PDF (opcional)</label>
                 <input
@@ -658,7 +591,6 @@ export default function NotasList() {
                 />
               </div>
 
-              {/* Botões */}
               <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
                 <button
                   type="button"
@@ -682,12 +614,9 @@ export default function NotasList() {
       )}
 
       {/* ---------- Modal de visualização do PDF ---------- */}
-      {/* Aparece quando notaPdf tem uma nota. O PDF é mostrado dentro de um iframe. */}
       {notaPdf && (
         <div className="fixed inset-0 w-screen h-screen bg-slate-900/70 backdrop-blur-sm flex justify-center items-center z-[900] p-4">
           <div className="bg-white rounded-2xl w-full max-w-5xl h-[90vh] shadow-2xl overflow-hidden flex flex-col">
-
-            {/* Topo: título, link para abrir em nova aba e botão de fechar */}
             <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-100 shrink-0">
               <h3 className="font-display font-bold text-lg text-hidrotec-3 truncate">
                 Nota Fiscal #{notaPdf.numero_nf}
@@ -707,7 +636,6 @@ export default function NotasList() {
               </div>
             </div>
 
-            {/* Área principal: o PDF. "#toolbar=0" esconde a barra do leitor de PDF. */}
             <div className="flex-1 bg-slate-100">
               <iframe
                 src={`${notaPdf.link_pdf}#toolbar=0`}
@@ -716,8 +644,6 @@ export default function NotasList() {
               />
             </div>
 
-            {/* Rodapé: Aprovar/Reprovar direto da visualização (só perfis autorizados e nota pendente).
-                Fecha este modal e abre o modal de parecer. */}
             {podeAvaliar && Number(notaPdf.status) === 0 && (
               <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 shrink-0">
                 <button
@@ -739,12 +665,9 @@ export default function NotasList() {
       )}
 
       {/* ---------- Modal de aprovação / reprovação ---------- */}
-      {/* Só é desenhado quando modalAberto é true */}
       {modalAberto && (
         <div className="fixed inset-0 w-screen h-screen bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-[1000] p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-8">
-
-            {/* Título do modal (verde para aprovar, vermelho para reprovar) */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <h3 className={`font-display font-bold text-lg flex items-center gap-2 ${tipoAcao === 'aprovar' ? 'text-green-600' : 'text-red-600'}`}>
                 {tipoAcao === 'aprovar' ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
@@ -758,7 +681,6 @@ export default function NotasList() {
             <form onSubmit={confirmarAcao} className="p-6">
               <div className="space-y-4">
                 <div>
-                  {/* Parecer: opcional ao aprovar, obrigatório ao reprovar */}
                   <label className={labelCls}>
                     Parecer do Diretor {tipoAcao === 'reprovar' ? '*' : '(Opcional)'}
                   </label>
@@ -773,7 +695,6 @@ export default function NotasList() {
                 </div>
               </div>
 
-              {/* Botões do modal */}
               <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
                 <button
                   type="button"
