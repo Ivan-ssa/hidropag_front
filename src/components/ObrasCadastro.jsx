@@ -15,7 +15,7 @@ export default function ObrasCadastro() {
     cno: '',
     endereco_localizacao: '',
     valor_previsto: '',
-    status: 1,
+    status: 0, // Padrão 0 (Nova) para novas obras
     ativo: true,
     filialId: '',
     clienteId: ''
@@ -87,7 +87,7 @@ export default function ObrasCadastro() {
         cno: obra.cno || '',
         endereco_localizacao: obra.endereco_localizacao || '',
         valor_previsto: obra.valor_previsto !== undefined ? obra.valor_previsto : '',
-        status: obra.status !== undefined ? Number(obra.status) : 1,
+        status: obra.status !== undefined ? Number(obra.status) : 0,
         ativo: obra.ativo !== undefined ? obra.ativo : true,
         filialId: obra.filialId || obra.filial?.id || '',
         clienteId: obra.clienteId || obra.cliente?.id || ''
@@ -147,7 +147,8 @@ export default function ObrasCadastro() {
 
     try {
       if (editando) {
-        await axios.patch(`${API_URL}/obras/${id}`, payload, config);
+        // CORRIGIDO: Alterado de axios.patch para axios.put para alinhar com o backend NestJS
+        await axios.put(`${API_URL}/obras/${id}`, payload, config);
       } else {
         await axios.post(`${API_URL}/obras`, payload, config);
       }
@@ -324,6 +325,7 @@ export default function ObrasCadastro() {
                   onChange={handleChange}
                   className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3 bg-white"
                 >
+                  <option value={0}>0 - Nova</option>
                   <option value={1}>1 - Em Andamento</option>
                   <option value={2}>2 - Pausada</option>
                   <option value={3}>3 - Finalizada</option>
