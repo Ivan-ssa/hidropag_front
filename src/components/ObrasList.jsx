@@ -6,28 +6,35 @@ import { Building2, Plus, Loader2, ChevronRight, Pencil } from 'lucide-react';
 export default function ObrasList() {
   const navigate = useNavigate();
   const [obras, setObras] = useState([]);
+  const [notas, setNotas] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
 
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
   useEffect(() => {
-    carregarObras();
+    carregarDados();
   }, []);
 
-  const carregarObras = async () => {
+  const carregarDados = async () => {
     try {
       setCarregando(true);
       const token = localStorage.getItem('tokenHidropag');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
       
-      const resposta = await axios.get(`${API_URL}/obras`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const [respostaObras, respostaNotas] = await Promise.all([
+        axios.get(`${API_URL}/obras`, config),
+        axios.get(`${API_URL}/notas`, config).catch(() => ({ data: [] }))
+      ]);
       
-      setObras(Array.isArray(resposta.data) ? resposta.data : []);
+      setObras(Array.isArray(respostaObras.data) ? respostaObras.data : (respostaObras.data?.data || []));
+      
+      const dadosNotas = respostaNotas.data;
+      setNotas(Array.isArray(dadosNotas) ? dadosNotas : (dadosNotas.data || dadosNotas.notas || []));
+      
       setErro(null);
     } catch (error) {
-      console.error("🔍 Erro ao buscar obras:", error);
+      console.error("🔍 Erro ao buscar dados:", error);
       setErro('Não foi possível carregar a lista de obras do sistema.');
     } finally {
       setCarregando(false);
@@ -95,8 +102,12 @@ export default function ObrasList() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {obras.map((obra) => {
+            // Soma as notas vinculadas a esta obra
+            const notasDaObra = notas.filter(n => String(n.obraId || n.obra?.id) === String(obra.id));
+            const gastoCalculado = notasDaObra.reduce((acc, n) => acc + Number(n.valor_total || 0), 0);
+
             const orcamento = Number(obra.valor_previsto || obra.orcamentoPrevisto || 0);
-            const gasto = Number(obra.totalGasto || 0);
+            const gasto = Number(obra.totalGasto || obra.total_gasto || gastoCalculado);
             const percentual = orcamento > 0 ? Math.round((gasto / orcamento) * 100) : 0;
             const larguraBarra = percentual > 100 ? 100 : percentual;
 
@@ -110,7 +121,7 @@ export default function ObrasList() {
                     </div>
                     <div>
                       <p className="text-xs font-bold text-hidrotec-4 mb-1">
-                        {obra.codigo || `OBR-${String(obra.id).padStart(3, '0' )}`} {obra.cno && `• CNO: ${obra.cno}`}
+                        {obra.codigo || `OBR-${String(obra.id).padStart(3, '0')}`} {obra.cno && `• CNO: ${obra.cno}`}
                       </p>
                       <h3 className="text-xl font-display font-semibold text-hidrotec-3 leading-tight">
                         {obra.nome_obra || obra.nome || obra.descricao || 'Obra sem nome'}
