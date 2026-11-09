@@ -1,3 +1,4 @@
+//src/App.jsx
 import { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { Droplets } from "lucide-react";
@@ -49,11 +50,9 @@ function Inicio() {
   const [usuarioPerfil, setUsuarioPerfil] = useState('');
 
   useEffect(() => {
-    // Pega o nome e o perfil salvos no localStorage (ajuste as chaves se necessário)
     const nomeSalvo = localStorage.getItem('usuarioNome') || localStorage.getItem('nome') || 'Usuário';
     let perfilSalvo = localStorage.getItem('usuarioPerfil') || localStorage.getItem('perfil') || 'Convidado';
     
-    // Capitaliza a primeira letra do perfil (ex: 'root' ou 'admin' fica com letra maiúscula)
     perfilSalvo = perfilSalvo.charAt(0).toUpperCase() + perfilSalvo.slice(1);
 
     setUsuarioNome(nomeSalvo);
@@ -76,8 +75,7 @@ function Inicio() {
         </p>
 
         <p className="text-hidrotec-4 leading-relaxed">
-          Use o menu ao lado para gerenciar filiais, usuários, obras e notas
-          fiscais.
+          Use o menu ao lado para gerenciar filiais, usuários, obras e notas fiscais.
         </p>
       </div>
     </div>
@@ -123,6 +121,7 @@ function App() {
 
           <Route path="/obras" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><ObrasList /></PrivateRoute>} />
           <Route path="/obras/nova" element={<PrivateRoute allowedRoles={['root','gestor','lancador']}><ObrasCadastro /></PrivateRoute>} />
+          <Route path="/obras/editar/:id" element={<PrivateRoute allowedRoles={['root','gestor','lancador']}><ObrasCadastro /></PrivateRoute>} />
 
           <Route path="/notas" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><NotasList /></PrivateRoute>} />
           <Route path="/notas/nova" element={<PrivateRoute allowedRoles={['root','gestor','lancador']}><NotasCadastro /></PrivateRoute>} />

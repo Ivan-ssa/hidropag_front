@@ -1,3 +1,5 @@
+// Fornecedores.jsx
+
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Truck, Plus, Search, Pencil, X, Save, Loader2, AlertCircle, Building, User, UserMinus, UserCheck, Check } from 'lucide-react';

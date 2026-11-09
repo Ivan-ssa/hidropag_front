@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { ArrowLeft, Save, Building2, AlertCircle, Loader2 } from 'lucide-react';
 
 export default function ObrasCadastro() {
   const navigate = useNavigate();
+  const { id } = useParams(); // Se houver ID na rota, estamos editando
+  const editando = Boolean(id);
+
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
   const [formData, setFormData] = useState({
@@ -22,6 +25,7 @@ export default function ObrasCadastro() {
   const [clientes, setClientes] = useState([]);
   
   const [carregando, setCarregando] = useState(false);
+  const [carregandoDados, setCarregandoDados] = useState(false);
   const [erro, setErro] = useState(null);
 
   const token = localStorage.getItem("tokenHidropag");
@@ -30,7 +34,11 @@ export default function ObrasCadastro() {
   useEffect(() => {
     carregarFiliais();
     carregarClientes();
-  }, []);
+
+    if (editando) {
+      carregarObraParaEdicao();
+    }
+  }, [id]);
 
   const carregarFiliais = async () => {
     try {
@@ -43,12 +51,9 @@ export default function ObrasCadastro() {
     }
   };
 
-  // 2. Busca e normalização robusta dos clientes
   const carregarClientes = async () => {
     try {
       const response = await axios.get(`${API_URL}/clientes`, config);
-      
-      // Suporta retorno direto como Array ou com paginação (.data / .items)
       let lista = [];
       if (Array.isArray(response.data)) {
         lista = response.data;
@@ -71,7 +76,30 @@ export default function ObrasCadastro() {
     }
   };
 
-  // 1. Controle no handleChange para CNO aceitar apenas números e no máximo 12 dígitos
+  const carregarObraParaEdicao = async () => {
+    try {
+      setCarregandoDados(true);
+      const response = await axios.get(`${API_URL}/obras/${id}`, config);
+      const obra = response.data;
+
+      setFormData({
+        nome_obra: obra.nome_obra || obra.nome || '',
+        cno: obra.cno || '',
+        endereco_localizacao: obra.endereco_localizacao || '',
+        valor_previsto: obra.valor_previsto !== undefined ? obra.valor_previsto : '',
+        status: obra.status !== undefined ? Number(obra.status) : 1,
+        ativo: obra.ativo !== undefined ? obra.ativo : true,
+        filialId: obra.filialId || obra.filial?.id || '',
+        clienteId: obra.clienteId || obra.cliente?.id || ''
+      });
+    } catch (error) {
+      console.error("Erro ao carregar dados da obra:", error);
+      setErro("Não foi possível carregar os dados para edição.");
+    } finally {
+      setCarregandoDados(false);
+    }
+  };
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
 
@@ -98,7 +126,6 @@ export default function ObrasCadastro() {
       return;
     }
 
-    // Validação estrita: se informado, deve ter exatamente 12 números
     if (formData.cno && formData.cno.length !== 12) {
       setErro("O CNO deve conter exatamente 12 números (atualmente tem " + formData.cno.length + ").");
       return;
@@ -110,7 +137,7 @@ export default function ObrasCadastro() {
     const payload = {
       nome_obra: formData.nome_obra.trim(),
       endereco_localizacao: formData.endereco_localizacao?.trim() || null,
-      valor_previsto: Number(formData.valor_previsto) || 0,
+      valor_previsto: formData.valor_previsto !== '' ? Number(formData.valor_previsto) : 0,
       status: Number(formData.status),
       ativo: Boolean(formData.ativo),
       filialId: Number(formData.filialId) || formData.filialId,
@@ -119,22 +146,35 @@ export default function ObrasCadastro() {
     };
 
     try {
-      await axios.post(`${API_URL}/obras`, payload, config);
+      if (editando) {
+        await axios.patch(`${API_URL}/obras/${id}`, payload, config);
+      } else {
+        await axios.post(`${API_URL}/obras`, payload, config);
+      }
       navigate("/obras");
     } catch (error) {
-      console.error("Erro ao cadastrar obra:", error);
+      console.error("Erro ao salvar obra:", error);
       const detalhes = error.response?.data?.message;
       if (Array.isArray(detalhes)) {
         setErro(detalhes.join(" | "));
       } else if (typeof detalhes === "string") {
         setErro(detalhes);
       } else {
-        setErro("Erro ao cadastrar obra. Verifique os dados e tente novamente.");
+        setErro("Erro ao salvar obra. Verifique os dados e tente novamente.");
       }
     } finally {
       setCarregando(false);
     }
   };
+
+  if (carregandoDados) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-hidrotec-1">
+        <Loader2 className="w-8 h-8 animate-spin mb-4" />
+        <p className="text-sm font-medium text-hidrotec-4">Carregando dados da obra...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl w-full mx-auto font-body pb-12">
@@ -151,7 +191,7 @@ export default function ObrasCadastro() {
             <div className="w-10 h-10 rounded-xl bg-extra flex items-center justify-center">
               <Building2 className="w-5 h-5 text-hidrotec-1" strokeWidth={2} />
             </div>
-            Nova Obra
+            {editando ? 'Editar Obra' : 'Nova Obra'}
           </h1>
           <p className="text-sm text-hidrotec-4">
             Preencha todos os dados técnicos e financeiros do empreendimento.
@@ -169,7 +209,6 @@ export default function ObrasCadastro() {
           )}
 
           <div className="space-y-6">
-            {/* Bloco 1: Identificação */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="md:col-span-2">
                 <label className="block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2">
@@ -203,7 +242,6 @@ export default function ObrasCadastro() {
               </div>
             </div>
 
-            {/* Bloco 2: Endereço */}
             <div>
               <label className="block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2">
                 Endereço e Localização
@@ -218,7 +256,6 @@ export default function ObrasCadastro() {
               />
             </div>
 
-            {/* Bloco 3: Relacionamentos (Cliente e Filial) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-5 bg-slate-50/50 rounded-xl border border-slate-100">
               <div>
                 <label className="block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2">
@@ -260,7 +297,6 @@ export default function ObrasCadastro() {
               </div>
             </div>
 
-            {/* Bloco 4: Financeiro e Status */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2">
@@ -295,7 +331,6 @@ export default function ObrasCadastro() {
               </div>
             </div>
 
-            {/* Checkbox Ativo */}
             <div className="flex items-center mt-4 pt-4 border-t border-slate-100">
               <label className="flex items-center gap-3 cursor-pointer group">
                 <div className="relative flex items-center">
@@ -314,7 +349,6 @@ export default function ObrasCadastro() {
             </div>
           </div>
 
-          {/* Botões */}
           <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-end gap-3">
             <Link
               to="/obras"

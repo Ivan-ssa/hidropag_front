@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Building2, Plus, Loader2, ChevronRight } from 'lucide-react';
+import { Building2, Plus, Loader2, ChevronRight, Pencil } from 'lucide-react';
 
 export default function ObrasList() {
+  const navigate = useNavigate();
   const [obras, setObras] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
 
-  const API_URL = import.meta.env.VITE_API_URL;
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
   useEffect(() => {
     carregarObras();
@@ -19,12 +20,11 @@ export default function ObrasList() {
       setCarregando(true);
       const token = localStorage.getItem('tokenHidropag');
       
-      // Rota corrigida para bater com o @Controller('obras') do NestJS
       const resposta = await axios.get(`${API_URL}/obras`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      setObras(resposta.data);
+      setObras(Array.isArray(resposta.data) ? resposta.data : []);
       setErro(null);
     } catch (error) {
       console.error("🔍 Erro ao buscar obras:", error);
@@ -41,11 +41,10 @@ export default function ObrasList() {
     }).format(valor || 0);
   };
 
-  const obrasAtivas = obras.filter(obra => obra.status !== 'Inativo').length;
+  const obrasAtivas = obras.filter(obra => obra.status !== 3 && obra.ativo !== false).length;
 
   return (
-    <div className="max-w-6xl w-full mx-auto font-body">
-      
+    <div className="max-w-6xl w-full mx-auto font-body pb-12">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
           <p className="text-[10px] font-bold tracking-widest text-hidrotec-1 uppercase mb-1">
@@ -81,7 +80,7 @@ export default function ObrasList() {
       {carregando ? (
         <div className="flex flex-col items-center justify-center h-64 text-hidrotec-1">
           <Loader2 className="w-8 h-8 animate-spin mb-4" />
-          <p className="text-sm font-medium text-hidrotec-4">A carregar obras do Supabase...</p>
+          <p className="text-sm font-medium text-hidrotec-4">A carregar obras...</p>
         </div>
       ) : erro ? (
         <div className="flex items-center justify-center h-64 text-red-500 font-medium bg-red-50/50 rounded-2xl border border-red-100">
@@ -96,10 +95,9 @@ export default function ObrasList() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {obras.map((obra) => {
-            const orcamento = obra.orcamentoPrevisto || 0;
-            const gasto = obra.totalGasto || 0;
+            const orcamento = Number(obra.valor_previsto || obra.orcamentoPrevisto || 0);
+            const gasto = Number(obra.totalGasto || 0);
             const percentual = orcamento > 0 ? Math.round((gasto / orcamento) * 100) : 0;
-            
             const larguraBarra = percentual > 100 ? 100 : percentual;
 
             return (
@@ -112,25 +110,35 @@ export default function ObrasList() {
                     </div>
                     <div>
                       <p className="text-xs font-bold text-hidrotec-4 mb-1">
-                        {obra.codigo || `OBR-${String(obra.id).padStart(3, '0')}`}
+                        {obra.codigo || `OBR-${String(obra.id).padStart(3, '0' )}`} {obra.cno && `• CNO: ${obra.cno}`}
                       </p>
                       <h3 className="text-xl font-display font-semibold text-hidrotec-3 leading-tight">
-                        {obra.nome || obra.descricao || 'Obra sem nome'}
+                        {obra.nome_obra || obra.nome || obra.descricao || 'Obra sem nome'}
                       </h3>
                     </div>
                   </div>
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                    obra.status !== 'Inativo' ? 'bg-green-50 text-green-600' : 'bg-slate-100 text-slate-500'
-                  }`}>
-                    {obra.status !== 'Inativo' ? 'Ativa' : 'Inativa'}
-                  </span>
+                  
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => navigate(`/obras/editar/${obra.id}`)}
+                      className="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 flex items-center justify-center transition-colors"
+                      title="Editar Obra"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      obra.status !== 3 && obra.ativo !== false ? 'bg-green-50 text-green-600' : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      {obra.status === 1 ? 'Em Andamento' : obra.status === 2 ? 'Pausada' : obra.status === 3 ? 'Finalizada' : 'Ativa'}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="px-6 py-4 grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1">Cliente</p>
                     <p className="text-sm font-medium text-hidrotec-3 truncate">
-                      {obra.cliente?.razaoSocial || 'Não informado'}
+                      {obra.cliente?.razao_social || obra.cliente?.razaoSocial || obra.cliente?.nome || 'Não informado'}
                     </p>
                   </div>
                   <div>
@@ -158,7 +166,7 @@ export default function ObrasList() {
 
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-[10px] font-medium text-slate-400 mb-0.5">Orçamento Previsto</p>
+                      <p className="text-[10px] font-medium text-slate-400 mb-0.5">Valor Previsto</p>
                       <p className="text-sm font-bold text-hidrotec-3">{formatarMoeda(orcamento)}</p>
                     </div>
                     <div className="text-right">
@@ -168,12 +176,15 @@ export default function ObrasList() {
                   </div>
                 </div>
 
-                <div className="px-6 py-3 border-t border-slate-100 bg-white hover:bg-slate-50 transition-colors cursor-pointer flex items-center justify-center group">
+                <Link 
+                  to={`/notas?obraId=${obra.id}`}
+                  className="px-6 py-3 border-t border-slate-100 bg-white hover:bg-slate-50 transition-colors flex items-center justify-center group"
+                >
                   <span className="text-xs font-medium text-hidrotec-4 group-hover:text-hidrotec-1 transition-colors flex items-center gap-1">
-                    Ver Detalhes da Obra
+                    Ver Notas da Obra
                     <ChevronRight className="w-4 h-4 opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
                   </span>
-                </div>
+                </Link>
 
               </div>
             );
