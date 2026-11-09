@@ -9,6 +9,7 @@ export default function ObrasList() {
   const [notas, setNotas] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
+  const [filtroStatus, setFiltroStatus] = useState('todas'); // 'todas', 'nova', 'andamento', 'pausada', 'finalizada', 'inativa'
 
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -48,7 +49,27 @@ export default function ObrasList() {
     }).format(valor || 0);
   };
 
-  const obrasAtivas = obras.filter(obra => obra.status !== 3 && obra.ativo !== false).length;
+  // Filtragem das obras baseada na aba selecionada
+  const obrasFiltradas = obras.filter(obra => {
+    const estaInativa = obra.ativo === false || obra.status === 'Inativo';
+    
+    if (filtroStatus === 'inativa') return estaInativa;
+    if (estaInativa) return false; 
+
+    if (filtroStatus === 'nova') return Number(obra.status) === 0 || obra.status === 'Nova' || !obra.status;
+    if (filtroStatus === 'andamento') return Number(obra.status) === 1;
+    if (filtroStatus === 'pausada') return Number(obra.status) === 2;
+    if (filtroStatus === 'finalizada') return Number(obra.status) === 3;
+    
+    return true; // 'todas'
+  });
+
+  const totalAtivas = obras.filter(o => o.ativo !== false && Number(o.status) !== 3).length;
+
+  const abaCls = (ativa) =>
+    `px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all cursor-pointer ${
+      ativa ? 'bg-hidrotec-3 text-white shadow-sm' : 'text-hidrotec-4 hover:text-hidrotec-3'
+    }`;
 
   return (
     <div className="max-w-6xl w-full mx-auto font-body pb-12">
@@ -74,14 +95,34 @@ export default function ObrasList() {
         </Link>
       </header>
 
-      <div className="flex items-center justify-between mb-6 pb-2 border-b border-slate-200">
+      {/* Abas de Filtro por Status */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-2 border-b border-slate-200">
+        <div className="flex items-center gap-1.5 bg-white border border-slate-200 p-1.5 rounded-2xl shadow-sm overflow-x-auto">
+          <button onClick={() => setFiltroStatus('todas')} className={abaCls(filtroStatus === 'todas')}>
+            Todas
+          </button>
+          <button onClick={() => setFiltroStatus('nova')} className={abaCls(filtroStatus === 'nova')}>
+            Nova
+          </button>
+          <button onClick={() => setFiltroStatus('andamento')} className={abaCls(filtroStatus === 'andamento')}>
+            Em Andamento
+          </button>
+          <button onClick={() => setFiltroStatus('pausada')} className={abaCls(filtroStatus === 'pausada')}>
+            Pausadas
+          </button>
+          <button onClick={() => setFiltroStatus('finalizada')} className={abaCls(filtroStatus === 'finalizada')}>
+            Finalizadas
+          </button>
+          <button onClick={() => setFiltroStatus('inativa')} className={abaCls(filtroStatus === 'inativa')}>
+            Inativas
+          </button>
+        </div>
         <div className="flex items-center gap-2">
-          <span className="text-xl font-bold text-hidrotec-3">{obrasAtivas}</span>
+          <span className="text-xl font-bold text-hidrotec-3">{totalAtivas}</span>
           <span className="text-sm font-medium text-hidrotec-4 uppercase tracking-wide">
             Obras ativas
           </span>
         </div>
-        <p className="text-xs text-hidrotec-4">Visão consolidada dos projetos em andamento</p>
       </div>
 
       {carregando ? (
@@ -93,16 +134,14 @@ export default function ObrasList() {
         <div className="flex items-center justify-center h-64 text-red-500 font-medium bg-red-50/50 rounded-2xl border border-red-100">
           {erro}
         </div>
-      ) : obras.length === 0 ? (
+      ) : obrasFiltradas.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 text-hidrotec-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
           <Building2 className="w-12 h-12 mb-3 text-slate-300" strokeWidth={1.5} />
-          <p className="font-medium mb-1">Nenhuma obra cadastrada ainda.</p>
-          <p className="text-sm">Clique em "Nova Obra" para começar.</p>
+          <p className="font-medium mb-1">Nenhuma obra encontrada com este filtro.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {obras.map((obra) => {
-            // Filtra notas da obra com status 1 (Aprovada) para somar no total gasto
+          {obrasFiltradas.map((obra) => {
             const notasDaObra = notas.filter(n => String(n.obraId || n.obra?.id) === String(obra.id) && Number(n.status) === 1);
             const gastoCalculado = notasDaObra.reduce((acc, n) => acc + Number(n.valor_total || 0), 0);
 
@@ -110,6 +149,9 @@ export default function ObrasList() {
             const gasto = Number(obra.totalGasto || obra.total_gasto || gastoCalculado);
             const percentual = orcamento > 0 ? Math.round((gasto / orcamento) * 100) : 0;
             const larguraBarra = percentual > 100 ? 100 : percentual;
+
+            const estaInativa = obra.ativo === false || obra.status === 'Inativo';
+            const eNova = Number(obra.status) === 0 || obra.status === 'Nova' || !obra.status;
 
             return (
               <div key={obra.id} className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
@@ -138,9 +180,12 @@ export default function ObrasList() {
                       <Pencil size={15} />
                     </button>
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      obra.status !== 3 && obra.ativo !== false ? 'bg-green-50 text-green-600' : 'bg-slate-100 text-slate-500'
+                      estaInativa ? 'bg-slate-100 text-slate-500' :
+                      eNova ? 'bg-purple-50 text-purple-600' :
+                      Number(obra.status) === 3 ? 'bg-blue-50 text-blue-600' :
+                      Number(obra.status) === 2 ? 'bg-amber-50 text-amber-600' : 'bg-green-50 text-green-600'
                     }`}>
-                      {obra.status === 1 ? 'Em Andamento' : obra.status === 2 ? 'Pausada' : obra.status === 3 ? 'Finalizada' : 'Ativa'}
+                      {estaInativa ? 'Inativa' : eNova ? 'Nova' : Number(obra.status) === 3 ? 'Finalizada' : Number(obra.status) === 2 ? 'Pausada' : 'Em Andamento'}
                     </span>
                   </div>
                 </div>
