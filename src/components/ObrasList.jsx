@@ -67,8 +67,8 @@ export default function ObrasList() {
   const totalAtivas = obras.filter(o => o.ativo !== false && Number(o.status) !== 3).length;
 
   const abaCls = (ativa) =>
-    `px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all cursor-pointer ${
-      ativa ? 'bg-hidrotec-3 text-white shadow-sm' : 'text-hidrotec-4 hover:text-hidrotec-3'
+    `px-4 py-2.5 rounded-xl text-xs font-bold uppercase transition-all cursor-pointer whitespace-nowrap ${
+      ativa ? 'bg-hidrotec-3 text-white shadow-sm' : 'bg-white text-hidrotec-4 hover:text-hidrotec-3 border border-slate-200'
     }`;
 
   return (
@@ -95,34 +95,37 @@ export default function ObrasList() {
         </Link>
       </header>
 
-      {/* Abas de Filtro por Status */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-2 border-b border-slate-200">
-        <div className="flex items-center gap-1.5 bg-white border border-slate-200 p-1.5 rounded-2xl shadow-sm overflow-x-auto">
-          <button onClick={() => setFiltroStatus('todas')} className={abaCls(filtroStatus === 'todas')}>
-            Todas
-          </button>
-          <button onClick={() => setFiltroStatus('nova')} className={abaCls(filtroStatus === 'nova')}>
-            Nova
-          </button>
-          <button onClick={() => setFiltroStatus('andamento')} className={abaCls(filtroStatus === 'andamento')}>
-            Em Andamento
-          </button>
-          <button onClick={() => setFiltroStatus('pausada')} className={abaCls(filtroStatus === 'pausada')}>
-            Pausadas
-          </button>
-          <button onClick={() => setFiltroStatus('finalizada')} className={abaCls(filtroStatus === 'finalizada')}>
-            Finalizadas
-          </button>
-          <button onClick={() => setFiltroStatus('inativa')} className={abaCls(filtroStatus === 'inativa')}>
-            Inativas
-          </button>
-        </div>
+      {/* Linha de Abas de Filtro por Status */}
+      <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2">
+        <button onClick={() => setFiltroStatus('todas')} className={abaCls(filtroStatus === 'todas')}>
+          Todas
+        </button>
+        <button onClick={() => setFiltroStatus('nova')} className={abaCls(filtroStatus === 'nova')}>
+          Nova
+        </button>
+        <button onClick={() => setFiltroStatus('andamento')} className={abaCls(filtroStatus === 'andamento')}>
+          Em Andamento
+        </button>
+        <button onClick={() => setFiltroStatus('pausada')} className={abaCls(filtroStatus === 'pausada')}>
+          Pausadas
+        </button>
+        <button onClick={() => setFiltroStatus('finalizada')} className={abaCls(filtroStatus === 'finalizada')}>
+          Finalizadas
+        </button>
+        <button onClick={() => setFiltroStatus('inativa')} className={abaCls(filtroStatus === 'inativa')}>
+          Inativas
+        </button>
+      </div>
+
+      {/* Contador de Obras Ativas */}
+      <div className="flex items-center justify-between mb-6 pb-2 border-b border-slate-200">
         <div className="flex items-center gap-2">
           <span className="text-xl font-bold text-hidrotec-3">{totalAtivas}</span>
           <span className="text-sm font-medium text-hidrotec-4 uppercase tracking-wide">
             Obras ativas
           </span>
         </div>
+        <p className="text-xs text-hidrotec-4">Visão consolidada dos projetos em andamento</p>
       </div>
 
       {carregando ? (
