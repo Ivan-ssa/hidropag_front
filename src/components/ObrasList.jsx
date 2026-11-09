@@ -102,8 +102,8 @@ export default function ObrasList() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {obras.map((obra) => {
-            // Soma as notas vinculadas a esta obra
-            const notasDaObra = notas.filter(n => String(n.obraId || n.obra?.id) === String(obra.id));
+            // Filtra notas da obra com status 1 (Aprovada) para somar no total gasto
+            const notasDaObra = notas.filter(n => String(n.obraId || n.obra?.id) === String(obra.id) && Number(n.status) === 1);
             const gastoCalculado = notasDaObra.reduce((acc, n) => acc + Number(n.valor_total || 0), 0);
 
             const orcamento = Number(obra.valor_previsto || obra.orcamentoPrevisto || 0);
