@@ -7,11 +7,12 @@ import { Truck, Plus, Search, Pencil, X, Save, Loader2, AlertCircle, Building, U
 const maskCNPJ = (value) => {
   if (!value) return "";
   return value
-    .replace(/\D/g, '')
-    .replace(/^(\d{2})(\d)/, '$1.$2')
-    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
-    .replace(/\.(\d{3})(\d)/, '.$1/$2')
-    .replace(/(\d{4})(\d)/, '$1-$2')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/gi, '') // Remove apenas símbolos/pontos, mantendo letras e números
+    .replace(/^([A-Z0-9]{2})([A-Z0-9])/, '$1.$2')
+    .replace(/^([A-Z0-9]{2})\.([A-Z0-9]{3})([A-Z0-9])/, '$1.$2.$3')
+    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2')
+    .replace(/([A-Z0-9]{4})([0-9])/, '$1-$2')
     .slice(0, 18);
 };
 
@@ -190,7 +191,10 @@ export default function Fornecedores() {
     const payload = {
       tipo_pessoa: formData.tipo_pessoa,
       razao_social: formData.tipo_pessoa === 'PJ' ? formData.razao_social : null,
-      cnpj: formData.tipo_pessoa === 'PJ' && formData.cnpj ? formData.cnpj.replace(/\D/g, '') : null,
+      // Troque:
+      // formData.cnpj.replace(/\D/g, '')
+      // Por:
+      cnpj: formData.tipo_pessoa === 'PJ' && formData.cnpj ? formData.cnpj.replace(/[^A-Za-z0-9]/g, '').toUpperCase() : null,
       nome: formData.tipo_pessoa === 'PF' ? formData.nome : null,
       cpf: formData.tipo_pessoa === 'PF' && formData.cpf ? formData.cpf.replace(/\D/g, '') : null,
       email: formData.email || null,

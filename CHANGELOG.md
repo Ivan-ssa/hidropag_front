@@ -1,3 +1,7 @@
+
+
+ajuste do cnpj para aceitar letras, cliente , fliliais , fornecedores.
+09/11/26
 teste automatizado de cadastro de usuario
 add changelog
 -------------------------------------
