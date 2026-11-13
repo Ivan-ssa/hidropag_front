@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, ArrowRight, Droplets } from 'lucide-react';
-import { jwtDecode } from "jwt-decode"; // Mantido do seu código
+import { Mail, Lock, Eye, EyeOff, ArrowRight, Droplets, Loader2 } from 'lucide-react';
+import { jwtDecode } from "jwt-decode";
 
-const API_URL = import.meta.env.VITE_API_URL; // Mantido do seu código
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -13,13 +13,31 @@ export default function Login() {
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [mostrarAjudaSenha, setMostrarAjudaSenha] = useState(false);
   const [erro, setErro] = useState('');
+  const [carregando, setCarregando] = useState(false);
 
-  // Lógica original preservada: Verifica se já está logado
+  // Checa se o token existe E se ainda é válido (não expirou)
   useEffect(() => {
-    const tokenExistente = localStorage.getItem('tokenHidropag');
+    // Busca no sessionStorage ou no localStorage
+    const tokenExistente = sessionStorage.getItem('tokenHidropag') || localStorage.getItem('tokenHidropag');
+    
     if (tokenExistente) {
-      navigate('/', { replace: true });
+      try {
+        const decoded = jwtDecode(tokenExistente);
+        const agoraEmSegundos = Math.floor(Date.now() / 1000);
+
+        // Se o token ainda não expirou, pode navegar
+        if (decoded.exp && decoded.exp > agoraEmSegundos) {
+          navigate('/', { replace: true });
+          return;
+        }
+      } catch (e) {
+        console.error("Token corrompido ou inválido");
+      }
     }
+
+    // Se não tem token ou já expirou, garante que limpa a sessão para ficar bloqueado no Login
+    localStorage.removeItem('tokenHidropag');
+    sessionStorage.removeItem('tokenHidropag');
   }, [navigate]);
 
   const handleLogin = (e) => {
@@ -30,36 +48,48 @@ export default function Login() {
       return;
     }
 
-    setErro(''); // Limpa erros antigos
+    setErro('');
+    setCarregando(true);
 
-    // LÓGICA DE BACK-END ORIGINAL MANTIDA AQUI
     axios.post(`${API_URL}/usuarios/login`, { 
-      email: email, 
+      email: email.trim(), 
       senha: senha 
     })
     .then((resposta) => {
       const tokenRecebido = resposta.data.token;
       const decoded = jwtDecode(tokenRecebido);
       
+      // Armazena no sessionStorage para fechar a sessão ao fechar a aba
+      sessionStorage.setItem('tokenHidropag', tokenRecebido);
+      sessionStorage.setItem('usuarioId', decoded.id); 
+      sessionStorage.setItem('usuarioNome', decoded.nome);
+      sessionStorage.setItem('usuarioPerfil', decoded.perfil?.nome || decoded.perfil);
+
+      // Mantém no localStorage também se outros componentes ainda consultarem por lá
       localStorage.setItem('tokenHidropag', tokenRecebido);
       localStorage.setItem('usuarioId', decoded.id); 
-      localStorage.setItem("usuarioNome", decoded.nome);
-      localStorage.setItem("usuarioPerfil", decoded.perfil.nome);
+      localStorage.setItem('usuarioNome', decoded.nome);
+      localStorage.setItem('usuarioPerfil', decoded.perfil?.nome || decoded.perfil);
 
       navigate("/");
     })
     .catch((erroAxios) => {
       console.error("🔍 Erro ao logar:", erroAxios.response);
-      if (erroAxios.response && erroAxios.response.data && erroAxios.response.data.erro) {
-        setErro("Erro do Servidor: " + erroAxios.response.data.erro);
+      if (erroAxios.response && erroAxios.response.data && erroAxios.response.data.message) {
+        const msg = erroAxios.response.data.message;
+        setErro(Array.isArray(msg) ? msg.join(" | ") : msg);
+      } else if (erroAxios.response && erroAxios.response.data && erroAxios.response.data.erro) {
+        setErro("Erro: " + erroAxios.response.data.erro);
       } else {
-        setErro("E-mail ou senha incorretos!");
+        setErro("E-mail ou senha incorretos, ou servidor inicializando.");
       }
+    })
+    .finally(() => {
+      setCarregando(false);
     });
   };
 
   return (
-    // INÍCIO DO VISUAL NOVO (Figma Hidrotec)
     <div className="min-h-screen flex items-center justify-center bg-surface relative overflow-hidden font-body">
       
       {/* Efeito de fundo */}
@@ -86,14 +116,14 @@ export default function Login() {
             Acesse sua conta
           </h2>
           <p className="text-sm text-hidrotec-4">
-            Bem-vindo de volta. Insira seus dados para continuar.
+            Insira suas credenciais para acessar o painel.
           </p>
         </div>
 
         {/* Formulário */}
         <form onSubmit={handleLogin} className="space-y-5">
           {erro && (
-            <div className="p-3 bg-red-50 text-red-500 text-sm rounded-xl text-center font-medium">
+            <div className="p-3 bg-red-50 text-red-500 text-sm rounded-xl text-center font-medium border border-red-100">
               {erro}
             </div>
           )}
@@ -107,6 +137,7 @@ export default function Login() {
               </div>
               <input
                 type="email"
+                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="seuemail@empresa.com"
@@ -124,6 +155,7 @@ export default function Login() {
               </div>
               <input
                 type={mostrarSenha ? "text" : "password"}
+                required
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
                 placeholder="Digite sua senha"
@@ -133,7 +165,7 @@ export default function Login() {
                 type="button"
                 onClick={() => setMostrarSenha(atual => !atual)}
                 aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
-                className="absolute inset-y-0 right-0 pr-4 flex items-center text-hidrotec-4 hover:text-hidrotec-3 transition-colors"
+                className="absolute inset-y-0 right-0 pr-4 flex items-center text-hidrotec-4 hover:text-hidrotec-3 transition-colors cursor-pointer"
               >
                 {mostrarSenha ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -151,18 +183,28 @@ export default function Login() {
             </div>
             {mostrarAjudaSenha && (
               <p className="text-xs text-hidrotec-4 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2.5 leading-relaxed">
-                Para redefinir sua senha, peça a quem administra o sistema. Essa pessoa pode definir uma nova senha na tela de Usuários.
+                Para redefinir sua senha, solicite ao administrador do sistema a alteração pela tela de Usuários.
               </p>
             )}
           </div>
 
-          {/* Botão Entrar */}
+          {/* Botão Entrar com Feedback de Carregamento */}
           <button
             type="submit"
-            className="w-full bg-hidrotec-1 hover:bg-hidrotec-2 text-white font-medium py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all mt-4 shadow-sm hover:shadow-md cursor-pointer"
+            disabled={carregando}
+            className="w-full bg-hidrotec-1 hover:bg-hidrotec-2 text-white font-medium py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all mt-4 shadow-sm hover:shadow-md cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            Entrar no Sistema
-            <ArrowRight size={18} />
+            {carregando ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                <span>Autenticando...</span>
+              </>
+            ) : (
+              <>
+                <span>Entrar no Sistema</span>
+                <ArrowRight size={18} />
+              </>
+            )}
           </button>
         </form>
 

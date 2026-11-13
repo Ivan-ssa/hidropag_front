@@ -1,7 +1,7 @@
-//src/App.jsx
-import { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { Droplets } from "lucide-react";
+import { jwtDecode } from "jwt-decode";
+import axios from "axios";
 import { PrivateRoute } from "./components/PrivateRoute";
 import "./App.css";
 
@@ -28,6 +28,26 @@ import AprovacoesCadastro from "./components/AprovacoesCadastro";
 import Configuracoes from './components/Configuracoes';
 import Fornecedores from './components/Fornecedores'; 
 import Clientes from './components/Clientes';
+import Relatorio from './components/Relatorio'; // <-- 1. IMPORT DO RELATÓRIO ADICIONADO
+
+// Interceptor global: se o token vencer durante o uso e a API retornar 401, desloga na hora
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      localStorage.removeItem("tokenHidropag");
+      sessionStorage.removeItem("tokenHidropag");
+      localStorage.removeItem("usuarioId");
+      localStorage.removeItem("usuarioNome");
+      localStorage.removeItem("usuarioPerfil");
+
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const getPerfil = () => localStorage.getItem("usuarioPerfil");
 
@@ -36,56 +56,53 @@ export const temAcesso = (perfisPermitidos) => {
   return perfisPermitidos.includes(perfilAtual);
 };
 
-function EmConstrucao({ modulo }) {
-  return (
-    <div style={{ textAlign: "center", marginTop: "50px" }}>
-      <h3>🚧 {modulo}</h3>
-      <p>Esta funcionalidade será desenvolvida em breve.</p>
-    </div>
-  );
-}
-
 function Inicio() {
-  const [usuarioNome, setUsuarioNome] = useState('');
-  const [usuarioPerfil, setUsuarioPerfil] = useState('');
-
-  useEffect(() => {
-    const nomeSalvo = localStorage.getItem('usuarioNome') || localStorage.getItem('nome') || 'Usuário';
-    let perfilSalvo = localStorage.getItem('usuarioPerfil') || localStorage.getItem('perfil') || 'Convidado';
-    
-    perfilSalvo = perfilSalvo.charAt(0).toUpperCase() + perfilSalvo.slice(1);
-
-    setUsuarioNome(nomeSalvo);
-    setUsuarioPerfil(perfilSalvo);
-  }, []);
-
   return (
     <div className="max-w-2xl">
       <div className="bg-white border border-slate-200 rounded-xl p-8 shadow-sm">
         <div className="w-12 h-12 rounded-xl bg-extra flex items-center justify-center mb-4">
           <Droplets className="w-6 h-6 text-hidrotec-1 fill-extra" />
         </div>
-        
-        <h2 className="font-display font-semibold text-2xl text-hidrotec-3 mb-1">
-          Bem-vindo, {usuarioNome}!
+        <h2 className="font-display font-semibold text-2xl text-hidrotec-3 mb-2">
+          Bem-vindo ao sistema HidroPag!
         </h2>
-        
-        <p className="text-sm font-medium text-hidrotec-1 mb-4">
-          Tipo de acesso: <span className="uppercase bg-extra px-2 py-0.5 rounded-md text-xs">{usuarioPerfil}</span>
-        </p>
-
         <p className="text-hidrotec-4 leading-relaxed">
-          Use o menu ao lado para gerenciar filiais, usuários, obras e notas fiscais.
+          Use o menu ao lado para gerenciar filiais, usuários, obras e notas
+          fiscais.
         </p>
       </div>
     </div>
   );
 }
 
-function RequireAuth() {
-  const token = localStorage.getItem("tokenHidropag");
+// Função auxiliar para checar se o token existe e se NÃO está vencido
+function tokenEstaValido() {
+  const token = localStorage.getItem("tokenHidropag") || sessionStorage.getItem("tokenHidropag");
+  if (!token) return false;
 
-  if (!token) {
+  try {
+    const decoded = jwtDecode(token);
+    const agoraEmSegundos = Math.floor(Date.now() / 1000);
+
+    if (decoded.exp && decoded.exp < agoraEmSegundos) {
+      // Token venceu: limpa tudo
+      localStorage.removeItem("tokenHidropag");
+      sessionStorage.removeItem("tokenHidropag");
+      localStorage.removeItem("usuarioId");
+      localStorage.removeItem("usuarioNome");
+      localStorage.removeItem("usuarioPerfil");
+      return false;
+    }
+    return true;
+  } catch (e) {
+    localStorage.removeItem("tokenHidropag");
+    sessionStorage.removeItem("tokenHidropag");
+    return false;
+  }
+}
+
+function RequireAuth() {
+  if (!tokenEstaValido()) {
     return <Navigate to="/login" replace />;
   }
 
@@ -121,6 +138,7 @@ function App() {
 
           <Route path="/obras" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><ObrasList /></PrivateRoute>} />
           <Route path="/obras/nova" element={<PrivateRoute allowedRoles={['root','gestor','lancador']}><ObrasCadastro /></PrivateRoute>} />
+          {/* 2. ROTA DE EDIÇÃO DE OBRAS ADICIONADA */}
           <Route path="/obras/editar/:id" element={<PrivateRoute allowedRoles={['root','gestor','lancador']}><ObrasCadastro /></PrivateRoute>} />
 
           <Route path="/notas" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><NotasList /></PrivateRoute>} />
@@ -133,9 +151,13 @@ function App() {
           
           <Route path="/fornecedores" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><Fornecedores /></PrivateRoute>} />
           
+          {/* 3. ROTA DE RELATÓRIOS PROTEGIDA */}
+          <Route path="/relatorios" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><Relatorio /></PrivateRoute>} />
+          
           <Route path="/clientes" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><Clientes /></PrivateRoute>} />
         </Route>
 
+        {/* Qualquer rota inválida redireciona para / (que passa pelo RequireAuth e joga p/ /login se deslogado) */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
