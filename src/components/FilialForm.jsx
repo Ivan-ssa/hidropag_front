@@ -1,3 +1,5 @@
+//src/components/FilialForm.jsx
+
 import { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -9,11 +11,12 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const maskCNPJ = (value) => {
   if (!value) return "";
   return value
-    .replace(/\D/g, '')
-    .replace(/^(\d{2})(\d)/, '$1.$2')
-    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
-    .replace(/\.(\d{3})(\d)/, '.$1/$2')
-    .replace(/(\d{4})(\d)/, '$1-$2')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/gi, '') // Remove apenas símbolos/pontos, mantendo letras e números
+    .replace(/^([A-Z0-9]{2})([A-Z0-9])/, '$1.$2')
+    .replace(/^([A-Z0-9]{2})\.([A-Z0-9]{3})([A-Z0-9])/, '$1.$2.$3')
+    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2')
+    .replace(/([A-Z0-9]{4})([0-9])/, '$1-$2')
     .slice(0, 18);
 };
 
@@ -92,8 +95,8 @@ function FilialForm() {
       return;
     }
 
-    // Limpa a formatação, garantindo que envie NULL se estiver vazio para o banco
-    let cnpjLimpo = filial.cnpj ? String(filial.cnpj).replace(/\D/g, '') : null;
+    // Limpa a formatação mantendo letras e números, garantindo que envie NULL se estiver vazio
+    let cnpjLimpo = filial.cnpj ? String(filial.cnpj).replace(/[^A-Za-z0-9]/g, '').toUpperCase() : null;
     if (cnpjLimpo === "") cnpjLimpo = null;
 
     let cepLimpo = filial.cep ? String(filial.cep).replace(/\D/g, '') : null;
@@ -117,7 +120,7 @@ function FilialForm() {
         headers: { Authorization: `Bearer ${meuToken}` }
       });
       alert("Filial cadastrada com sucesso!");
-      navigate('/filiais'); // Redireciona de volta para a lista
+      navigate('/filiais');
     } catch (erro) {
       console.error("Erro ao cadastrar:", erro);
       if (erro.response && erro.response.status === 401) {
@@ -131,7 +134,6 @@ function FilialForm() {
     }
   };
 
-  // Classes padrão para reaproveitar nos inputs
   const inputCls = "w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-flow-400 focus:border-transparent";
   const labelCls = "block text-sm font-medium text-slate-700 mb-1.5";
 

@@ -1,524 +1,922 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
-import { Link } from "react-router-dom";
-import { Plus, Pencil, Trash2, X, Check, Filter, RotateCcw, Download, Paperclip, Search, AlertTriangle, List, Clock, CheckCircle, XCircle } from "lucide-react";
+// =====================================================================
+// NotasList.jsx
+// Tela de listagem de Notas Fiscais com a canetinha antes do número e sem o #.
+// =====================================================================
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { Link, useSearchParams } from 'react-router-dom';
+import {
+  FileText, Plus, Search, CheckCircle, XCircle, Clock, Eye,
+  AlertCircle, X, Send, Loader2, MessageSquare, Filter, RotateCcw,
+  Paperclip, ExternalLink, Pencil, Building2, Trash2
+} from 'lucide-react';
 
-function NotasList() {
-  const [notas, setNotas] = useState([]);
-  const [obras, setObras] = useState([]);
+export default function NotasList() {
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+  const token = localStorage.getItem('tokenHidropag');
+  const config = { headers: { Authorization: `Bearer ${token}` } };
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const obraIdFiltro = searchParams.get('obraId');
+
+  const nome = localStorage.getItem('usuarioNome') || 'Usuário';
+  const perfil = localStorage.getItem('usuarioPerfil');
+  const usuarioId = localStorage.getItem('usuarioId');
+  const podeAvaliar = ['root', 'gestor'].includes(perfil);
+
+  const hora = new Date().getHours();
+  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+
+  const [notas, setNotas] = useState([]);                      
+  const [obras, setObras] = useState([]);                      
+  const [fornecedores, setFornecedores] = useState([]);        
+  const [busca, setBusca] = useState('');                      
+  const [filtroStatus, setFiltroStatus] = useState('todas');   
+  const [filtroVencimento, setFiltroVencimento] = useState(''); 
+  const [carregando, setCarregando] = useState(true);          
+  const [erro, setErro] = useState(null);                      
+
+  const [notasSelecionadasLote, setNotasSelecionadasLote] = useState([]);
+
+  const [modalAberto, setModalAberto] = useState(false);
+  const [tipoAcao, setTipoAcao] = useState(null);              
+  const [notaSelecionada, setNotaSelecionada] = useState(null); 
+  const [mensagem, setMensagem] = useState('');                
+  const [processando, setProcessando] = useState(false);        
+
+  const [notaPdf, setNotaPdf] = useState(null);
+
+  // Estados para Edição Completa
   const [notaEditando, setNotaEditando] = useState(null);
-  const [arquivoEdicao, setArquivoEdicao] = useState(null);
-  const perfil = localStorage.getItem("usuarioPerfil");
-  
-  // Controla o popup de visualização do PDF e Aprovação
-  const [notaVisualizando, setNotaVisualizando] = useState(null); 
+  const [formEdicao, setFormEdicao] = useState({});          
+  const [arquivoEdicao, setArquivoEdicao] = useState(null);  
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+  const [excluindoNota, setExcluindoNota] = useState(false);
 
-  // Estados dos Filtros
-  const [filtroStatus, setFiltroStatus] = useState(""); // "" = Todos, "0" = A Decidir, "1" = Aprovadas, "2" = Reprovadas
-  const [filtroVencimento, setFiltroVencimento] = useState("");
-  const [busca, setBusca] = useState("");
-
-  const config = {
-    headers: { Authorization: `Bearer ${localStorage.getItem("tokenHidropag")}` },
-  };
-
-  const carregarDados = async () => {
-    try {
-      const resNotas = await axios.get(`${API_URL}/notas`, config);
-      setNotas(resNotas.data);
-    } catch (err) {
-      console.error("Erro ao buscar notas:", err);
-    }
-      
-    try {
-      const resObras = await axios.get(`${API_URL}/obras`, config);
-      setObras(resObras.data);
-    } catch (err) {
-      console.error("Erro ao buscar obras:", err);
-    }
-  };
+  const podeEditar = ['root', 'gestor', 'lancador'].includes(perfil);
 
   useEffect(() => {
-    carregarDados();
-  }, []);
+    carregarNotas();
+    carregarObrasEFornecedores();
+  }, [obraIdFiltro]);
 
-  // --- FILTRAGEM NA TELA ---
-  const notasFiltradas = notas.filter(nota => {
-    const bateStatus = filtroStatus === "" || nota.status.toString() === filtroStatus;
-    const bateVencimento = filtroVencimento === "" || nota.data_vencimento === filtroVencimento;
-    const termo = busca.trim().toLowerCase();
-    const bateBusca =
-      termo === "" ||
-      nota.numero_nf?.toString().includes(termo) ||
-      nota.fornecedor?.toLowerCase().includes(termo);
-    return bateStatus && bateVencimento && bateBusca;
-  });
-
-  // Nota vencida = ainda "a decidir" (status 0) e com vencimento no passado
-  function estaVencida(nota) {
-    if (nota.status !== 0 || !nota.data_vencimento) return false;
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    return new Date(nota.data_vencimento) < hoje;
-  }
-
-  // --- FUNÇÕES DE APROVAÇÃO ---
-  const mudarStatus = async (id, novoStatus) => {
+  const carregarNotas = async () => {
     try {
-      // FIX: Enviamos JSON puro { status: novoStatus } em vez de FormData.
-      // O NestJS entende isso perfeitamente e atualiza o banco sem Erro 500.
-      await axios.put(`${API_URL}/notas/${id}`, { status: novoStatus }, config);
-      
-      alert(novoStatus === 1 ? "Nota Aprovada com sucesso!" : "Nota Reprovada com sucesso!");
-      setNotaVisualizando(null); 
-      carregarDados(); 
-    } catch (erro) {
-      console.error("Erro na aprovação:", erro);
-      alert("Erro ao mudar o status da nota.");
+      setCarregando(true);
+      const resposta = await axios.get(`${API_URL}/notas`, config);
+      const dados = resposta.data;
+      setNotas(Array.isArray(dados) ? dados : (dados.data || dados.notas || []));
+      setNotasSelecionadasLote([]);
+      setErro(null);
+    } catch (error) {
+      console.error('Erro ao buscar notas fiscais:', error);
+      setErro('Não foi possível carregar a lista de notas fiscais.');
+    } finally {
+      setCarregando(false);
     }
   };
 
-  // --- EXCLUSÃO ---
-  const excluirNota = async (id) => {
-    if (window.confirm("Deseja realmente excluir permanentemente esta nota?")) {
-      try {
-        await axios.delete(`${API_URL}/notas/${id}`, config);
-        alert("Excluída com sucesso!");
-        carregarDados();
-      } catch (erro) {
-        console.error(erro);
-        alert("Erro ao excluir a nota.");
+  const carregarObrasEFornecedores = async () => {
+    try {
+      const [resObras, resForn] = await Promise.all([
+        axios.get(`${API_URL}/obras`, config).catch(() => ({ data: [] })),
+        axios.get(`${API_URL}/fornecedores`, config).catch(() => ({ data: [] }))
+      ]);
+      setObras(Array.isArray(resObras.data) ? resObras.data : (resObras.data?.data || []));
+      const dadosForn = resForn.data;
+      setFornecedores(Array.isArray(dadosForn) ? dadosForn : (dadosForn.data || []));
+    } catch (err) {
+      console.error('Erro ao carregar selects auxiliares:', err);
+    }
+  };
+
+  const nomeFornecedor = (f) => {
+    if (!f) return '';
+    if (typeof f === 'string') return f;
+    const nome = f.razao_social || f.nome_fantasia || f.nome || f.fornecedor;
+    if (typeof nome === 'string') return nome;
+    const primeiroTexto = Object.values(f).find(v => typeof v === 'string' && v.trim() !== '');
+    return primeiroTexto || '';
+  };
+
+  const selecionarTodasPendentes = (e) => {
+    if (e.target.checked) {
+      const idsPendentes = notasFiltradas
+        .filter(n => Number(n.status) === 0)
+        .map(n => n.id);
+      setNotasSelecionadasLote(idsPendentes);
+    } else {
+      setNotasSelecionadasLote([]);
+    }
+  };
+
+  const toggleSelecionarNota = (id) => {
+    setNotasSelecionadasLote(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const aprovarSelecionadasEmLote = async () => {
+    if (notasSelecionadasLote.length === 0) return;
+
+    const confirmou = window.confirm(`Deseja realmente aprovar as ${notasSelecionadasLote.length} notas selecionadas?`);
+    if (!confirmou) return;
+
+    try {
+      setProcessando(true);
+      await Promise.all(
+        notasSelecionadasLote.map(async (idNota) => {
+          const payloadAprovacao = {
+            decisao: 1,
+            observacao: 'Aprovação em lote',
+            nota: idNota,
+            usuario: usuarioId,
+          };
+          await axios.post(`${API_URL}/aprovacoes`, payloadAprovacao, config);
+          await axios.put(`${API_URL}/notas/${idNota}`, { status: 1 }, config);
+        })
+      );
+
+      alert('Notas selecionadas aprovadas com sucesso!');
+      setNotasSelecionadasLote([]);
+      carregarNotas();
+    } catch (error) {
+      console.error('Erro ao aprovar em lote:', error);
+      alert('Ocorreu um erro ao processar a aprovação em lote.');
+    } finally {
+      setProcessando(false);
+    }
+  };
+
+  const abrirModalAcao = (nota, acao) => {
+    setNotaSelecionada(nota);
+    setTipoAcao(acao);
+    setMensagem('');
+    setModalAberto(true);
+  };
+
+  const confirmarAcao = async (e) => {
+    e.preventDefault(); 
+    if (!notaSelecionada) return;
+
+    try {
+      setProcessando(true);
+      const novoStatus = tipoAcao === 'aprovar' ? 1 : 2;
+
+      const payloadAprovacao = {
+        decisao: novoStatus,
+        observacao: mensagem,
+        nota: notaSelecionada.id,
+        usuario: usuarioId,
+      };
+      await axios.post(`${API_URL}/aprovacoes`, payloadAprovacao, config);
+      await axios.put(`${API_URL}/notas/${notaSelecionada.id}`, { status: novoStatus }, config);
+
+      alert(`Nota fiscal ${tipoAcao === 'aprovar' ? 'aprovada' : 'reprovada'} com sucesso!`);
+      setModalAberto(false);
+      setNotaSelecionada(null);
+      carregarNotas(); 
+    } catch (error) {
+      console.error('Erro completo da API:', error);
+      if (error.response && error.response.data) {
+        const msgServidor = error.response.data.message || error.response.data;
+        alert(`O back-end recusou a alteração: ${JSON.stringify(msgServidor)}`);
+      } else {
+        alert(`Erro de rede: a rota PUT /notas/${notaSelecionada.id} falhou.`);
       }
+    } finally {
+      setProcessando(false);
     }
   };
 
-  // --- FUNÇÕES DO MODAL DE EDIÇÃO ---
-  const abrirModalEdicao = (nota) => {
-    setNotaEditando({
-      ...nota,
-      obraId: nota.obra ? nota.obra.id : ""
+  // -------------------------------------------------------------------
+  // EDIÇÃO COMPLETA E EXCLUSÃO (DENTRO DO MODAL)
+  // -------------------------------------------------------------------
+  const abrirEdicao = (nota) => {
+    setNotaEditando(nota);
+    setFormEdicao({
+      numero_nf: nota.numero_nf || '',
+      data_vencimento: nota.data_vencimento ? String(nota.data_vencimento).slice(0, 10) : '',
+      valor_total: nota.valor_total ?? '',
+      quant_parcelas: nota.quant_parcelas || 1,
+      obra: nota.obra?.id || '',
+      fornecedorId: nota.fornecedor?.id || '',
     });
     setArquivoEdicao(null);
   };
 
-  const handleEditChange = (e) => {
+  const handleEdicaoChange = (e) => {
     const { name, value } = e.target;
-    setNotaEditando(prev => ({ ...prev, [name]: value }));
+    setFormEdicao(prev => ({ ...prev, [name]: value }));
   };
 
   const salvarEdicao = async (e) => {
     e.preventDefault();
+    if (!notaEditando) return;
 
     try {
-      // 1. Atualiza os dados de texto (JSON)
+      setSalvandoEdicao(true);
       const payload = {
-        numero_nf: Number(notaEditando.numero_nf),
-        fornecedor: notaEditando.fornecedor || "",
-        data_vencimento: notaEditando.data_vencimento || null,
-        valor_total: Number(notaEditando.valor_total),
-        quant_parcelas: Number(notaEditando.quant_parcelas),
-        status: Number(notaEditando.status),
-        
-        // ALTERAÇÃO AQUI: Enviamos diretamente o ID (string/UUID)
-        // Se o seu DTO chamar "obraId", use "obraId". Se chamar "obra", use "obra".
-        // Pelo erro, ele está esperando o ID, então tente:
-        obra: notaEditando.obraId || null 
+        numero_nf: String(formEdicao.numero_nf),
+        data_vencimento: formEdicao.data_vencimento || null,
+        valor_total: Number(formEdicao.valor_total),
+        quant_parcelas: Number(formEdicao.quant_parcelas),
+        obra: formEdicao.obra || null,
+        fornecedorId: formEdicao.fornecedorId || null,
       };
 
       await axios.put(`${API_URL}/notas/${notaEditando.id}`, payload, config);
 
-      // 2. Se houver arquivo, faz o upload na rota separada
       if (arquivoEdicao) {
         const formData = new FormData();
-        formData.append("file", arquivoEdicao); // Nome do campo deve ser exatamente 'file'
-        
-        // Enviamos apenas o FormData e o Token. 
-        // O Axios adiciona o Boundary do multipart/form-data automaticamente.
-        // NÃO coloque "Content-Type" nos headers aqui, isso causa o erro 400.
-        await axios.put(`${API_URL}/notas/${notaEditando.id}/upload-pdf`, formData, {
-          headers: { 
-            Authorization: config.headers.Authorization 
-          }
-        });
+        formData.append('file', arquivoEdicao);
+        await axios.put(`${API_URL}/notas/${notaEditando.id}/upload-pdf`, formData, config);
       }
 
-      alert("Nota atualizada com sucesso!");
+      alert('Nota atualizada com sucesso!');
       setNotaEditando(null);
       setArquivoEdicao(null);
-      carregarDados();
-    } catch (erro) {
-      console.error("Erro detalhado:", erro.response?.data || erro);
-      alert("Erro ao atualizar: " + (erro.response?.data?.message || "Verifique o arquivo ou os dados."));
+      carregarNotas(); 
+    } catch (error) {
+      console.error('Erro ao atualizar nota:', error);
+      const msg = error.response?.data?.message;
+      alert('Erro ao atualizar: ' + (msg ? JSON.stringify(msg) : 'verifique os dados e o arquivo.'));
+    } finally {
+      setSalvandoEdicao(false);
     }
   };
 
-  // Textos para o Status
-  const renderStatus = (status) => {
-    if (status === 1) return <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold text-white bg-success-500">APROVADA</span>;
-    if (status === 2) return <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold text-white bg-danger-500">REPROVADA</span>;
-    return <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold text-white bg-amber-500">A DECIDIR</span>;
+  const excluirNotaNoModal = async () => {
+    if (!notaEditando) return;
+    const confirmou = window.confirm(`Tem certeza que deseja excluir a Nota Fiscal #${notaEditando.numero_nf}? Esta ação não pode ser desfeita.`);
+    if (!confirmou) return;
+
+    try {
+      setExcluindoNota(true);
+      await axios.delete(`${API_URL}/notas/${notaEditando.id}`, config);
+      alert('Nota fiscal excluída com sucesso!');
+      setNotaEditando(null);
+      carregarNotas();
+    } catch (error) {
+      console.error('Erro ao excluir nota:', error);
+      alert('Não foi possível excluir a nota fiscal.');
+    } finally {
+      setExcluindoNota(false);
+    }
   };
 
-  const inputCls = "w-full px-3 py-2 mt-1 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-flow-400 focus:border-transparent";
-  const labelCls = "text-xs font-semibold text-slate-600";
+  const notasBaseResumo = obraIdFiltro 
+    ? notas.filter(n => String(n.obraId || n.obra?.id) === String(obraIdFiltro))
+    : notas;
+
+  const totalDecidir = notasBaseResumo.filter(n => Number(n.status) === 0).length;
+  const totalAprovadas = notasBaseResumo.filter(n => Number(n.status) === 1).length;
+  const totalLancado = notasBaseResumo.length;
+
+  const obraAtualObj = notas.find(n => String(n.obraId || n.obra?.id) === String(obraIdFiltro))?.obra;
+  const nomeObraFiltrada = obraAtualObj?.nome_obra || obraAtualObj?.nome || `Obra #${obraIdFiltro}`;
+
+  const notasFiltradas = notas.filter(n => {
+    if (obraIdFiltro) {
+      const idNotaObra = String(n.obraId || n.obra?.id || '');
+      if (idNotaObra !== String(obraIdFiltro)) return false;
+    }
+
+    const termo = busca.toLowerCase();
+    const numero = String(n.numero_nf || '').toLowerCase();
+    const fornecedor = nomeFornecedor(n.fornecedor).toLowerCase();
+    const matchTexto = numero.includes(termo) || fornecedor.includes(termo);
+
+    const matchStatus =
+      filtroStatus === 'todas' ? true :
+      filtroStatus === 'decidir' ? Number(n.status) === 0 :
+      filtroStatus === 'aprovadas' ? Number(n.status) === 1 :
+      filtroStatus === 'reprovadas' ? Number(n.status) === 2 : true;
+
+    const matchVencimento = filtroVencimento ? n.data_vencimento?.includes(filtroVencimento) : true;
+
+    return matchTexto && matchStatus && matchVencimento;
+  });
+
+  const formatarMoeda = (valor) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
+  };
+
+  const renderVencimento = (dataStr, status) => {
+    if (!dataStr) return '-';
+    // Pega apenas os primeiros 10 caracteres (YYYY-MM-DD) para ignorar o fuso horário
+    const dataSomente = String(dataStr).slice(0, 10);
+    const [ano, mes, dia] = dataSomente.split('-');
+    const dataFormatada = `${dia}/${mes}/${ano}`;
+
+    // Cria a data em UTC para calcular o alerta de vencimento corretamente
+    const dataVenc = new Date(Date.UTC(Number(ano), Number(mes) - 1, Number(dia)));
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    const diffDias = Math.ceil((dataVenc - hoje) / (1000 * 60 * 60 * 24));
+
+    if (Number(status) === 0) {
+      if (diffDias < 0) {
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-red-50 text-red-700 border border-red-200" title="Vencido!">
+            {dataFormatada}
+          </span>
+        );
+      } else if (diffDias <= 7) {
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200" title="Vence em breve!">
+            {dataFormatada}
+          </span>
+        );
+      }
+    }
+
+    return <span className="text-hidrotec-4">{dataFormatada}</span>;
+  };
+
+  // const renderVencimento = (dataStr, status) => {
+  //   if (!dataStr) return '-';
+  //   const dataVenc = new Date(dataStr);
+  //   const hoje = new Date();
+  //   hoje.setHours(0, 0, 0, 0);
+
+  //   const diffDias = Math.ceil((dataVenc - hoje) / (1000 * 60 * 60 * 24));
+  //   const dataFormatada = dataVenc.toLocaleDateString('pt-BR');
+
+  //   if (Number(status) === 0) {
+  //     if (diffDias < 0) {
+  //       return (
+  //         <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-red-50 text-red-700 border border-red-200" title="Vencido!">
+  //           {dataFormatada}
+  //         </span>
+  //       );
+  //     } else if (diffDias <= 7) {
+  //       return (
+  //         <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200" title="Vence em breve!">
+  //           {dataFormatada}
+  //         </span>
+  //       );
+  //     }
+  //   }
+
+  //   return <span className="text-hidrotec-4">{dataFormatada}</span>;
+  // };
+
+  const renderStatus = (status) => {
+    switch (Number(status)) {
+      case 1:
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-green-50 text-green-600">
+            <CheckCircle size={12} /> Aprovada
+          </span>
+        );
+      case 2:
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-red-50 text-red-600">
+            <XCircle size={12} /> Reprovada
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-amber-50 text-amber-600">
+            <Clock size={12} /> Pendente
+          </span>
+        );
+    }
+  };
+
+  const inputCls = 'w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3 bg-white';
+  const labelCls = 'block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2';
 
   return (
-    <div className="relative">
-      
-      {/* CABEÇALHO SUPERIOR: ABAS DE STATUS E BOTÃO NOVA NOTA */}
-      <div className="flex flex-col lg:flex-row items-center justify-between gap-4 mb-4">
-        {/* Abas de Filtro de Status */}
-        <div className="flex bg-white rounded-lg p-1 border border-slate-200 shadow-sm w-full lg:w-auto overflow-x-auto">
+    <div className="max-w-6xl w-full mx-auto font-body pb-12">
+
+      <header className="mb-6">
+        <h1 className="text-3xl font-display font-semibold text-hidrotec-3 mb-1">
+          Notas Fiscais
+        </h1>
+        <p className="text-sm text-hidrotec-4">
+          Listagem e gerenciamento de notas fiscais
+        </p>
+      </header>
+
+      {obraIdFiltro && (
+        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-700 shrink-0">
+              <Building2 size={20} />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-blue-600 uppercase tracking-wider">Filtrando por Obra</p>
+              <p className="text-sm font-semibold text-blue-900">{nomeObraFiltrada}</p>
+            </div>
+          </div>
           <button
-            onClick={() => setFiltroStatus("")}
-            className={`flex-1 lg:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-md transition-all whitespace-nowrap ${
-              filtroStatus === "" ? "bg-slate-800 text-white shadow" : "text-slate-500 hover:text-slate-800"
+            onClick={() => setSearchParams({})}
+            className="px-4 py-2 bg-white border border-blue-200 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl transition-colors shadow-sm"
+          >
+            Mostrar Todas as Notas
+          </button>
+        </div>
+      )}
+
+      <div className="mb-8">
+        <h2 className="text-2xl font-display font-bold text-hidrotec-3 mb-1">
+          Olá, {nome}! {saudacao}.
+        </h2>
+        <p className="text-sm text-hidrotec-4 mb-6">
+          Aqui está o resumo das suas notas fiscais e aprovações pendentes.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
+              <Clock size={24} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-hidrotec-4">A DECIDIR</p>
+              <p className="text-3xl font-display font-bold text-hidrotec-3">{totalDecidir}</p>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center text-green-600 shrink-0">
+              <CheckCircle size={24} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-hidrotec-4">APROVADAS</p>
+              <p className="text-3xl font-display font-bold text-hidrotec-3">{totalAprovadas}</p>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-extra flex items-center justify-center text-hidrotec-1 shrink-0">
+              <FileText size={24} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-hidrotec-4">TOTAL LANÇADO</p>
+              <p className="text-3xl font-display font-bold text-hidrotec-3">{totalLancado}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-2 bg-white border border-slate-200 p-1.5 rounded-2xl shadow-sm">
+          <button
+            onClick={() => setFiltroStatus('todas')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all ${
+              filtroStatus === 'todas' ? 'bg-hidrotec-3 text-white shadow-sm' : 'text-hidrotec-4 hover:text-hidrotec-3'
             }`}
           >
-            <List className="w-4 h-4" /> Todas
+            Todas
           </button>
           <button
-            onClick={() => setFiltroStatus("0")}
-            className={`flex-1 lg:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-md transition-all whitespace-nowrap ${
-              filtroStatus === "0" ? "bg-amber-500 text-white shadow" : "text-slate-500 hover:text-amber-600"
+            onClick={() => setFiltroStatus('decidir')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all ${
+              filtroStatus === 'decidir' ? 'bg-amber-500 text-white shadow-sm' : 'text-hidrotec-4 hover:text-hidrotec-3'
             }`}
           >
-            <Clock className="w-4 h-4" /> A Decidir
+            A Decidir
           </button>
           <button
-            onClick={() => setFiltroStatus("1")}
-            className={`flex-1 lg:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-md transition-all whitespace-nowrap ${
-              filtroStatus === "1" ? "bg-success-500 text-white shadow" : "text-slate-500 hover:text-success-600"
+            onClick={() => setFiltroStatus('aprovadas')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all ${
+              filtroStatus === 'aprovadas' ? 'bg-green-600 text-white shadow-sm' : 'text-hidrotec-4 hover:text-hidrotec-3'
             }`}
           >
-            <CheckCircle className="w-4 h-4" /> Aprovadas
+            Aprovadas
           </button>
           <button
-            onClick={() => setFiltroStatus("2")}
-            className={`flex-1 lg:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-md transition-all whitespace-nowrap ${
-              filtroStatus === "2" ? "bg-danger-500 text-white shadow" : "text-slate-500 hover:text-danger-600"
+            onClick={() => setFiltroStatus('reprovadas')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all ${
+              filtroStatus === 'reprovadas' ? 'bg-red-600 text-white shadow-sm' : 'text-hidrotec-4 hover:text-hidrotec-3'
             }`}
           >
-            <XCircle className="w-4 h-4" /> Reprovadas
+            Reprovadas
           </button>
         </div>
 
         <Link
           to="/notas/nova"
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold rounded-lg bg-flow-500 hover:bg-flow-600 text-white transition-colors shadow-sm w-full lg:w-auto justify-center"
+          className="bg-hidrotec-1 hover:bg-hidrotec-2 text-white px-5 py-2.5 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2 shadow-sm"
         >
-          <Plus className="w-4 h-4" />
+          <Plus size={18} />
           Nova Nota
         </Link>
       </div>
 
-      {/* BARRA DE PESQUISA E VENCIMENTO */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 mb-5 flex gap-4 items-center flex-wrap shadow-sm">
-        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-          <Filter className="w-4 h-4 text-flow-500" />
-          Refinar:
-        </span>
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm mb-6 flex flex-col md:flex-row items-center gap-4">
+        <div className="flex items-center gap-2 text-hidrotec-4 font-bold text-xs uppercase tracking-wider shrink-0">
+          <Filter size={16} /> Filtros:
+        </div>
 
-        <div className="relative flex-1 min-w-[250px] max-w-sm">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        <div className="relative flex-1 w-full">
+          <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            value={busca}
-            onChange={e => setBusca(e.target.value)}
             placeholder="Buscar NF ou fornecedor..."
-            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-flow-400"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 bg-white"
           />
         </div>
 
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-slate-600">Vencimento:</label>
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <span className="text-xs font-bold text-hidrotec-4 whitespace-nowrap">Vencimento:</span>
           <input
             type="date"
             value={filtroVencimento}
-            onChange={e => setFiltroVencimento(e.target.value)}
-            className="px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-flow-400"
+            onChange={(e) => setFiltroVencimento(e.target.value)}
+            className="px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 bg-white text-hidrotec-3"
           />
         </div>
 
         <button
-          onClick={() => { setFiltroStatus(""); setFiltroVencimento(""); setBusca(""); }}
-          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-600 transition-colors ml-auto"
+          onClick={() => { setBusca(''); setFiltroStatus('todas'); setFiltroVencimento(''); setSearchParams({}); }}
+          className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-hidrotec-3 border border-slate-200 rounded-xl flex items-center gap-1.5 transition-colors whitespace-nowrap"
         >
-          <RotateCcw className="w-3.5 h-3.5" />
-          Limpar Filtros
+          <RotateCcw size={14} /> Limpar Filtros
         </button>
       </div>
 
-      {/* TABELA DE NOTAS (Ações Rápidas Removidas) */}
-      <div className="overflow-x-auto bg-white border border-slate-200 rounded-xl shadow-sm">
-        <table className="w-full min-w-[1000px] text-sm">
-          <thead>
-            <tr className="bg-ink-800 text-white text-left">
-              <th className="px-4 py-3 font-medium">NF</th>
-              <th className="px-4 py-3 font-medium">Fornecedor</th>
-              <th className="px-4 py-3 font-medium">Obra</th>
-              <th className="px-4 py-3 font-medium">Vencimento</th>
-              <th className="px-4 py-3 font-medium">Valor (R$)</th>
-              <th className="px-4 py-3 font-medium text-center">Status</th>
-              <th className="px-4 py-3 font-medium text-center">Visualizar/Aprovar</th>
-              <th className="px-4 py-3 font-medium text-center">Gerenciar</th>
-            </tr>
-          </thead>
-          <tbody>
-            {notasFiltradas.length === 0 ? (
-              <tr><td colSpan="8" className="px-4 py-8 text-center text-slate-500">Nenhuma nota encontrada com estes filtros.</td></tr>
-            ) : (
-              notasFiltradas.map((nota) => (
-                <tr key={nota.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                  <td className="px-4 py-3 font-semibold text-slate-800">{nota.numero_nf}</td>
-                  <td className="px-4 py-3 text-slate-600">{nota.fornecedor || "-"}</td>
-                  <td className="px-4 py-3 text-slate-600">{nota.obra?.nome_obra || "Sem obra"}</td>
-                  <td className="px-4 py-3">
-                    <span className={estaVencida(nota) ? "inline-flex items-center gap-1 text-danger-500 font-semibold" : "text-slate-600"}>
-                      {estaVencida(nota) && <AlertTriangle className="w-3.5 h-3.5" title="Nota Vencida!" />}
-                      {nota.data_vencimento ? new Date(nota.data_vencimento).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : "-"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 font-medium text-slate-700">
-                    {nota.valor_total ? `R$ ${Number(nota.valor_total).toFixed(2)}` : "-"}
-                  </td>
-
-                  <td className="px-4 py-3 text-center">
-                    {renderStatus(nota.status)}
-                  </td>
-
-                  {/* VISUALIZAR PDF E APROVAR (Abre o Modal Fullscreen) */}
-                  <td className="px-4 py-3 text-center">
-                    {nota.tem_anexo && nota.link_pdf ? (
-                      <button
-                        type="button"
-                        onClick={() => setNotaVisualizando(nota)}
-                        className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                          nota.status === 0 ? "bg-flow-500 hover:bg-flow-600 text-white shadow-sm" : "bg-slate-100 hover:bg-slate-200 text-slate-600"
-                        }`}
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        {nota.status === 0 ? "Analisar PDF" : "Ver PDF"}
-                      </button>
-                    ) : (
-                      <span title="Sem arquivo anexado" className="inline-flex items-center gap-1 text-xs text-slate-300">
-                        <Paperclip className="w-3.5 h-3.5" /> Sem Anexo
-                      </span>
-                    )}
-                  </td>
-
-                  {/* BOTÕES DE EDITAR E EXCLUIR */}
-                  <td className="px-4 py-3 text-center whitespace-nowrap">
-                    
-                    {/* Apenas Lançador, Gestor ou Root podem EDITAR */}
-                    {(perfil === 'lancador' || perfil === 'gestor' || perfil === 'root') && (
-                      <button
-                        onClick={() => abrirModalEdicao(nota)}
-                        className="inline-flex items-center gap-1 mr-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-md bg-amber-500 hover:bg-amber-600 text-white transition-colors"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                        Editar
-                      </button>
-                    )}
-
-                    {/* Apenas Gestor ou Root podem EXCLUIR */}
-                    {(perfil === 'gestor' || perfil === 'root') && (
-                      <button
-                        onClick={() => excluirNota(nota.id)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-md bg-ink-800 hover:bg-ink-700 text-white transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Excluir
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* --- MODAL DE VISUALIZAÇÃO DO PDF E APROVAÇÃO --- */}
-      {notaVisualizando && (
-        <div className="fixed inset-0 w-screen h-screen bg-slate-900/80 backdrop-blur-sm flex justify-center items-center z-[1100] p-2 sm:p-6">
-          <div className="bg-white rounded-xl w-full max-w-7xl h-full shadow-2xl flex flex-col overflow-hidden">
-            
-            {/* Header do Modal */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white shrink-0">
-              <h3 className="font-display font-bold text-lg text-slate-800">
-                Análise de Nota Fiscal
-              </h3>
-              <button onClick={() => setNotaVisualizando(null)} className="p-1 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            {/* Corpo Dividido */}
-            <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
-              
-              {/* Barra Lateral Esquerda: Dados e Ações */}
-              <div className="w-full lg:w-1/3 bg-slate-50 border-r border-slate-200 p-6 flex flex-col gap-6 overflow-y-auto shrink-0">
-                
-                {/* Resumo da Nota */}
-                <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm space-y-4">
-                  <h4 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 mb-2 uppercase tracking-wide">
-                    Dados do Lançamento
-                  </h4>
-                  
-                  <div>
-                    <span className="block text-xs font-semibold text-slate-500 uppercase">Fornecedor</span>
-                    <span className="block text-base font-medium text-slate-800">{notaVisualizando.fornecedor || "Não informado"}</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <span className="block text-xs font-semibold text-slate-500 uppercase">Número NF</span>
-                      <span className="block text-sm font-medium text-slate-800">{notaVisualizando.numero_nf}</span>
-                    </div>
-                    <div>
-                      <span className="block text-xs font-semibold text-slate-500 uppercase">Valor Total</span>
-                      <span className="block text-lg font-bold text-flow-600">
-                        {notaVisualizando.valor_total ? `R$ ${Number(notaVisualizando.valor_total).toFixed(2)}` : "-"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <span className="block text-xs font-semibold text-slate-500 uppercase">Vencimento</span>
-                      <span className={`block text-sm font-medium ${estaVencida(notaVisualizando) ? "text-danger-600" : "text-slate-800"}`}>
-                        {notaVisualizando.data_vencimento ? new Date(notaVisualizando.data_vencimento).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : "-"}
-                        {estaVencida(notaVisualizando) && " (Vencida)"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="block text-xs font-semibold text-slate-500 uppercase">Status Atual</span>
-                      <div className="mt-1">{renderStatus(notaVisualizando.status)}</div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <span className="block text-xs font-semibold text-slate-500 uppercase">Obra Vinculada</span>
-                    <span className="block text-sm font-medium text-slate-800">{notaVisualizando.obra?.nome_obra || "Nenhuma"}</span>
-                  </div>
-                </div>
-
-                {/* Área de Decisão (Visível apenas se o status for 0) */}
-                {notaVisualizando.status === 0 ? (
-                  <div className="bg-white border border-flow-200 rounded-lg p-5 shadow-sm mt-auto">
-                    <h4 className="text-sm font-bold text-slate-800 text-center mb-4">Decisão do Gestor</h4>
-                    <div className="flex flex-col gap-3">
-                      <button
-                        onClick={() => mudarStatus(notaVisualizando.id, 1)}
-                        className="w-full flex items-center justify-center gap-2 py-3 rounded-lg bg-success-500 hover:bg-green-700 text-white font-bold transition-colors shadow-md"
-                      >
-                        <Check className="w-5 h-5" /> APROVAR PAGAMENTO
-                      </button>
-                      <button
-                        onClick={() => mudarStatus(notaVisualizando.id, 2)}
-                        className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-danger-500 text-danger-600 hover:bg-danger-50 font-bold transition-colors"
-                      >
-                        <X className="w-5 h-5" /> REPROVAR NOTA
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-auto p-4 bg-slate-100 rounded-lg text-center text-sm text-slate-500 font-medium">
-                    Esta nota já foi avaliada e não requer decisão pendente.
-                  </div>
-                )}
-                
-                <a
-                  href={notaVisualizando.link_pdf}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2 text-center text-sm font-semibold text-flow-600 hover:text-flow-500 transition-colors"
-                >
-                  Abrir PDF em nova aba externa
-                </a>
-              </div>
-
-              {/* Área do PDF (Viewport Principal) */}
-              <div className="w-full lg:w-2/3 h-[50vh] lg:h-full bg-slate-800 flex flex-col relative">
-                <iframe
-                  src={`${notaVisualizando.link_pdf}#toolbar=0`}
-                  title={`Nota ${notaVisualizando.numero_nf}`}
-                  className="w-full h-full border-0"
-                />
-              </div>
-
-            </div>
+      {podeAvaliar && notasSelecionadasLote.length > 0 && (
+        <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-2xl p-3 px-5 flex items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-2 text-emerald-900 text-sm font-semibold">
+            <CheckCircle className="w-5 h-5 text-emerald-600" />
+            <span><strong>{notasSelecionadasLote.length}</strong> nota(s) pendente(s) selecionada(s).</span>
           </div>
+          <button
+            onClick={aprovarSelecionadasEmLote}
+            disabled={processando}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-2 disabled:opacity-50"
+          >
+            {processando ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+            Aprovar Notas Selecionadas
+          </button>
         </div>
       )}
 
-      {/* --- MODAL DE EDIÇÃO TRADICIONAL MANTIDO AQUI (Ocultado no snippet para brevidade, mas está no seu código original) --- */}
-      {/* MODAL DE EDIÇÃO */}
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto min-h-[300px]">
+          {carregando ? (
+            <div className="flex flex-col items-center justify-center h-64 text-hidrotec-1">
+              <Loader2 className="w-8 h-8 animate-spin mb-4" />
+              <p className="text-sm font-medium text-hidrotec-4">A carregar notas fiscais...</p>
+            </div>
+          ) : erro ? (
+            <div className="flex items-center justify-center h-64 text-red-500 font-medium bg-red-50/50">
+              <AlertCircle className="w-5 h-5 mr-2" />
+              {erro}
+            </div>
+          ) : notasFiltradas.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-hidrotec-4">
+              <FileText className="w-12 h-12 mb-3 text-slate-300" strokeWidth={1.5} />
+              <p className="font-medium mb-1">Nenhuma nota fiscal encontrada.</p>
+              <p className="text-sm">Tente ajustar os filtros ou clique em "Nova Nota".</p>
+            </div>
+          ) : (
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-100 text-[10px] uppercase tracking-wider text-hidrotec-4 bg-slate-50/50">
+                  {podeAvaliar && (
+                    <th className="px-3 py-3 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        onChange={selecionarTodasPendentes}
+                        checked={
+                          notasFiltradas.filter(n => Number(n.status) === 0).length > 0 &&
+                          notasFiltradas.filter(n => Number(n.status) === 0).every(n => notasSelecionadasLote.includes(n.id))
+                        }
+                        className="rounded border-slate-300 text-hidrotec-1 focus:ring-hidrotec-1 w-4 h-4 cursor-pointer"
+                        title="Selecionar todas as pendentes visíveis"
+                      />
+                    </th>
+                  )}
+                  <th className="px-3 py-3 w-12 text-center font-semibold">Editar</th>
+                  <th className="px-3 py-3 font-semibold">NF</th>
+                  <th className="px-3 py-3 font-semibold">Fornecedor</th>
+                  <th className="px-3 py-3 font-semibold">Obra</th>
+                  <th className="px-3 py-3 font-semibold">Vencimento</th>
+                  <th className="px-3 py-3 font-semibold">Valor (R$)</th>
+                  <th className="px-3 py-3 font-semibold text-center">Status</th>
+                  <th className="px-3 py-3 font-semibold text-center">PDF</th>
+                  <th className="px-3 py-3 font-semibold text-right">Gerenciar</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {notasFiltradas.map((nota) => {
+                  const ehPendente = Number(nota.status) === 0;
+                  const estaSelecionada = notasSelecionadasLote.includes(nota.id);
+
+                  return (
+                    <tr key={nota.id} className="hover:bg-slate-50/50 transition-colors group text-sm">
+                      {podeAvaliar && (
+                        <td className="px-3 py-2.5 text-center">
+                          {ehPendente && (
+                            <input
+                              type="checkbox"
+                              checked={estaSelecionada}
+                              onChange={() => toggleSelecionarNota(nota.id)}
+                              className="rounded border-slate-300 text-hidrotec-1 focus:ring-hidrotec-1 w-4 h-4 cursor-pointer"
+                            />
+                          )}
+                        </td>
+                      )}
+                      
+                      {/* Coluna exclusiva para a caneta de edição antes do número */}
+                      <td className="px-3 py-2.5 text-center">
+                        {podeEditar && (
+                          <button
+                            onClick={() => abrirEdicao(nota)}
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-hidrotec-3 transition-colors mx-auto"
+                            title="Editar nota"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </td>
+
+                      {/* Número da NF limpo, sem o # */}
+                      <td className="px-3 py-2.5 font-bold text-hidrotec-3 whitespace-nowrap">
+                        {nota.numero_nf}
+                      </td>
+
+                      <td className="px-3 py-2.5 text-hidrotec-4 truncate max-w-[150px]" title={nomeFornecedor(nota.fornecedor)}>
+                        {nomeFornecedor(nota.fornecedor) || '-'}
+                      </td>
+                      <td className="px-3 py-2.5 font-medium text-hidrotec-3 truncate max-w-[160px]" title={nota.obra?.nome_obra || nota.obra?.nome}>
+                        {nota.obra?.nome_obra || nota.obra?.nome || '-'}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {renderVencimento(nota.data_vencimento, nota.status)}
+                      </td>
+                      <td className="px-3 py-2.5 font-bold text-hidrotec-3 whitespace-nowrap">
+                        {formatarMoeda(nota.valor_total)}
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        <div className="flex flex-col items-center gap-0.5">
+                          {renderStatus(nota.status)}
+                          {nota.parecer && (
+                            <span className="text-[10px] text-slate-500 italic max-w-[180px] truncate flex items-center gap-1" title={nota.parecer}>
+                              <MessageSquare size={10} className="shrink-0 text-hidrotec-1" />
+                              {nota.parecer}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        <div className="flex items-center justify-center">
+                          {nota.tem_anexo && nota.link_pdf ? (
+                            <button
+                              onClick={() => setNotaPdf(nota)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 text-xs font-bold transition-colors"
+                              title="Visualizar PDF"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              PDF
+                            </button>
+                          ) : (
+                            <span title="Sem anexo" className="inline-flex items-center text-xs text-slate-300">
+                              <Paperclip className="w-3.5 h-3.5" />
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {podeAvaliar && ehPendente && (
+                            <>
+                              <button
+                                onClick={() => abrirModalAcao(nota, 'aprovar')}
+                                disabled={processando}
+                                className="px-2.5 py-1 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 text-[11px] font-bold uppercase transition-colors"
+                                title="Aprovar nota"
+                              >
+                                Aprovar
+                              </button>
+                              <button
+                                onClick={() => abrirModalAcao(nota, 'reprovar')}
+                                disabled={processando}
+                                className="px-2.5 py-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 text-[11px] font-bold uppercase transition-colors"
+                                title="Reprovar nota"
+                              >
+                                Reprovar
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* ---------- Modal de Edição Completa com Exclusão Integrada ---------- */}
       {notaEditando && (
-        <div className="fixed inset-0 w-screen h-screen bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-[1000] p-4">
-          <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-              <h3 className="font-display font-semibold text-slate-800">Editar Nota {notaEditando.numero_nf}</h3>
-              <button onClick={() => setNotaEditando(null)} className="text-slate-400 hover:text-slate-600">
+        <div className="fixed inset-0 w-screen h-screen bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-[1000] p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden my-8">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h3 className="font-display font-bold text-lg text-hidrotec-3 flex items-center gap-2">
+                <Pencil className="w-5 h-5 text-hidrotec-1" />
+                Editar Nota Fiscal {notaEditando.numero_nf}
+              </h3>
+              <button onClick={() => setNotaEditando(null)} className="text-slate-400 hover:text-hidrotec-3 transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={salvarEdicao} className="p-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+            <form onSubmit={salvarEdicao} className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className={labelCls}>Número NF:</label>
-                  <input type="number" name="numero_nf" value={notaEditando.numero_nf} onChange={handleEditChange} className={inputCls} required />
+                  <label className={labelCls}>Número da NF *</label>
+                  <input type="text" name="numero_nf" value={formEdicao.numero_nf} onChange={handleEdicaoChange} className={inputCls} required />
                 </div>
                 <div>
-                  <label className={labelCls}>Fornecedor:</label>
-                  <input type="text" name="fornecedor" value={notaEditando.fornecedor || ''} onChange={handleEditChange} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Valor Total:</label>
-                  <input type="number" step="0.01" name="valor_total" value={notaEditando.valor_total || ''} onChange={handleEditChange} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Vencimento:</label>
-                  <input type="date" name="data_vencimento" value={notaEditando.data_vencimento ? notaEditando.data_vencimento.substring(0, 10) : ''} onChange={handleEditChange} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Parcelas:</label>
-                  <input type="number" name="quant_parcelas" value={notaEditando.quant_parcelas || 1} onChange={handleEditChange} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Statussss:</label>
-                  <select name="status" value={notaEditando.status} onChange={handleEditChange} className={`${inputCls} bg-white`}>
-                    <option value="0">A Decidir</option>
-                    <option value="1">Aprovada</option>
-                    <option value="2">Reprovada</option>
-                  </select>
-                </div>
-                <div className="sm:col-span-2">
-                  <label className={labelCls}>Trocar Obra:</label>
-                  <select name="obraId" value={notaEditando.obraId} onChange={handleEditChange} className={`${inputCls} bg-white`}>
-                    <option value="">-- Sem Obra --</option>
-                    {obras.map((o) => (
-                      <option key={o.id} value={o.id}>{o.nome_obra}</option>
+                  <label className={labelCls}>Fornecedor</label>
+                  <select name="fornecedorId" value={formEdicao.fornecedorId} onChange={handleEdicaoChange} className={`${inputCls} bg-white`}>
+                    <option value="">-- Sem fornecedor --</option>
+                    {fornecedores.map(f => (
+                      <option key={f.id} value={f.id}>{nomeFornecedor(f)}</option>
                     ))}
                   </select>
                 </div>
-                <div className="sm:col-span-2">
-                  <label className={labelCls}>Atualizar Arquivo (Opcional):</label>
-                  <input
-                    type="file"
-                    onChange={e => setArquivoEdicao(e.target.files[0])}
-                    className="w-full mt-1 text-sm text-slate-600 file:mr-3 file:px-3 file:py-1.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-flow-100 file:text-flow-600 hover:file:bg-flow-100/70"
+                <div>
+                  <label className={labelCls}>Data de Vencimento *</label>
+                  <input type="date" name="data_vencimento" value={formEdicao.data_vencimento} onChange={handleEdicaoChange} className={inputCls} required />
+                </div>
+                <div>
+                  <label className={labelCls}>Valor Total (R$) *</label>
+                  <input type="number" step="0.01" name="valor_total" value={formEdicao.valor_total} onChange={handleEdicaoChange} className={inputCls} required />
+                </div>
+                <div>
+                  <label className={labelCls}>Qtd. de Parcelas *</label>
+                  <input type="number" min="1" name="quant_parcelas" value={formEdicao.quant_parcelas} onChange={handleEdicaoChange} className={inputCls} required />
+                </div>
+                <div>
+                  <label className={labelCls}>Vincular à Obra *</label>
+                  <select name="obra" value={formEdicao.obra} onChange={handleEdicaoChange} className={`${inputCls} bg-white`} required>
+                    <option value="">-- Selecione uma Obra --</option>
+                    {obras.map(obra => (
+                      <option key={obra.id} value={obra.id}>{obra.nome_obra || obra.nome || 'Obra sem nome'}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-4 p-4 bg-slate-50/50 rounded-xl border border-slate-200 border-dashed">
+                <label className={labelCls}>Atualizar Arquivo PDF (opcional)</label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => setArquivoEdicao(e.target.files[0] || null)}
+                  className="w-full text-sm text-slate-600 file:mr-4 file:px-4 file:py-2 file:rounded-lg file:border-0 file:text-xs file:font-bold file:uppercase file:bg-extra file:text-hidrotec-1 cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-100">
+                {/* Botão de Excluir dentro do Modal */}
+                {podeEditar && (
+                  <button
+                    type="button"
+                    onClick={excluirNotaNoModal}
+                    disabled={excluindoNota}
+                    className="px-4 py-2.5 text-sm font-bold rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {excluindoNota ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                    Excluir Nota
+                  </button>
+                )}
+
+                <div className="flex items-center gap-3 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setNotaEditando(null)}
+                    className="px-5 py-2.5 text-sm font-medium rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={salvandoEdicao}
+                    className="px-5 py-2.5 text-sm font-bold rounded-xl bg-hidrotec-1 hover:bg-hidrotec-2 text-white transition-all shadow-sm flex items-center gap-2 disabled:opacity-70"
+                  >
+                    {salvandoEdicao ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                    Salvar Alterações
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {notaPdf && (
+        <div className="fixed inset-0 w-screen h-screen bg-slate-900/70 backdrop-blur-sm flex justify-center items-center z-[900] p-4">
+          <div className="bg-white rounded-2xl w-full max-w-5xl h-[90vh] shadow-2xl overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-100 shrink-0">
+              <h3 className="font-display font-bold text-lg text-hidrotec-3 truncate">
+                Nota Fiscal {notaPdf.numero_nf}
+              </h3>
+              <div className="flex items-center gap-4">
+                <a
+                  href={notaPdf.link_pdf}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors whitespace-nowrap"
+                >
+                  <ExternalLink size={14} /> Abrir em nova aba
+                </a>
+                <button onClick={() => setNotaPdf(null)} className="text-slate-400 hover:text-hidrotec-3 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 bg-slate-100">
+              <iframe
+                src={`${notaPdf.link_pdf}#toolbar=0`}
+                title={`PDF da nota ${notaPdf.numero_nf}`}
+                className="w-full h-full border-0"
+              />
+            </div>
+
+            {podeAvaliar && Number(notaPdf.status) === 0 && (
+              <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 shrink-0">
+                <button
+                  onClick={() => { const nota = notaPdf; setNotaPdf(null); abrirModalAcao(nota, 'reprovar'); }}
+                  className="px-5 py-2.5 text-sm font-bold rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                >
+                  Reprovar
+                </button>
+                <button
+                  onClick={() => { const nota = notaPdf; setNotaPdf(null); abrirModalAcao(nota, 'aprovar'); }}
+                  className="px-5 py-2.5 text-sm font-bold rounded-xl bg-green-600 text-white hover:bg-green-700 transition-colors"
+                >
+                  Aprovar
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {modalAberto && (
+        <div className="fixed inset-0 w-screen h-screen bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-[1000] p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-8">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h3 className={`font-display font-bold text-lg flex items-center gap-2 ${tipoAcao === 'aprovar' ? 'text-green-600' : 'text-red-600'}`}>
+                {tipoAcao === 'aprovar' ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+                {tipoAcao === 'aprovar' ? 'Aprovar' : 'Reprovar'} Nota Fiscal {notaSelecionada?.numero_nf}
+              </h3>
+              <button onClick={() => setModalAberto(false)} className="text-slate-400 hover:text-hidrotec-3 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={confirmarAcao} className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className={labelCls}>
+                    Parecer do Diretor {tipoAcao === 'reprovar' ? '*' : '(Opcional)'}
+                  </label>
+                  <textarea
+                    rows="4"
+                    value={mensagem}
+                    onChange={(e) => setMensagem(e.target.value)}
+                    className={`${inputCls} resize-none`}
+                    placeholder={tipoAcao === 'aprovar' ? 'Adicione um parecer opcional para esta aprovação...' : 'Descreva o motivo da recusa ou observações para o lançador...'}
+                    {...(tipoAcao === 'reprovar' ? { required: true } : {})}
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 mt-5">
-                <button type="button" onClick={() => setNotaEditando(null)} className="px-4 py-2 text-sm rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-colors">Cancelar</button>
-                <button type="submit" className="px-4 py-2 text-sm font-semibold rounded-lg bg-flow-500 hover:bg-flow-600 text-white transition-colors">Salvar Alterações</button>
+              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setModalAberto(false)}
+                  className="px-5 py-2.5 text-sm font-medium rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={processando}
+                  className={`px-5 py-2.5 text-sm font-bold rounded-xl text-white transition-all shadow-sm flex items-center gap-2 disabled:opacity-70 ${
+                    tipoAcao === 'aprovar' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                  }`}
+                >
+                  {processando ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                  Confirmar {tipoAcao === 'aprovar' ? 'Aprovação' : 'Reprovação'}
+                </button>
               </div>
             </form>
           </div>
@@ -529,4 +927,817 @@ function NotasList() {
   );
 }
 
-export default NotasList;
+// // =====================================================================
+// // NotasList.jsx
+// // Tela de listagem de Notas Fiscais.
+// // =====================================================================
+
+// import React, { useState, useEffect } from 'react';
+// import axios from 'axios';
+// import { Link, useSearchParams } from 'react-router-dom';
+// import {
+//   FileText, Plus, Search, CheckCircle, XCircle, Clock, Eye,
+//   AlertCircle, X, Send, Loader2, MessageSquare, Filter, RotateCcw,
+//   Paperclip, ExternalLink, Pencil, Building2
+// } from 'lucide-react';
+
+// export default function NotasList() {
+//   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+//   const token = localStorage.getItem('tokenHidropag');
+//   const config = { headers: { Authorization: `Bearer ${token}` } };
+
+//   const [searchParams, setSearchParams] = useSearchParams();
+//   const obraIdFiltro = searchParams.get('obraId');
+
+//   const nome = localStorage.getItem('usuarioNome') || 'Usuário';
+//   const perfil = localStorage.getItem('usuarioPerfil');
+//   const usuarioId = localStorage.getItem('usuarioId');
+//   const podeAvaliar = ['root', 'gestor'].includes(perfil);
+
+//   const hora = new Date().getHours();
+//   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+
+//   const [notas, setNotas] = useState([]);                      
+//   const [busca, setBusca] = useState('');                      
+//   const [filtroStatus, setFiltroStatus] = useState('todas');   
+//   const [filtroVencimento, setFiltroVencimento] = useState(''); 
+//   const [carregando, setCarregando] = useState(true);          
+//   const [erro, setErro] = useState(null);                      
+
+//   const [notasSelecionadasLote, setNotasSelecionadasLote] = useState([]);
+
+//   const [modalAberto, setModalAberto] = useState(false);
+//   const [tipoAcao, setTipoAcao] = useState(null);              
+//   const [notaSelecionada, setNotaSelecionada] = useState(null); 
+//   const [mensagem, setMensagem] = useState('');                
+//   const [processando, setProcessando] = useState(false);        
+
+//   const [notaPdf, setNotaPdf] = useState(null);
+
+//   const [notaEditando, setNotaEditando] = useState(null);
+//   const [formEdicao, setFormEdicao] = useState({});          
+//   const [arquivoEdicao, setArquivoEdicao] = useState(null);  
+//   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
+//   const podeEditar = ['root', 'gestor', 'lancador'].includes(perfil);
+
+//   useEffect(() => {
+//     carregarNotas();
+//   }, [obraIdFiltro]);
+
+//   const carregarNotas = async () => {
+//     try {
+//       setCarregando(true);
+//       const resposta = await axios.get(`${API_URL}/notas`, config);
+//       const dados = resposta.data;
+//       setNotas(Array.isArray(dados) ? dados : (dados.data || dados.notas || []));
+//       setNotasSelecionadasLote([]);
+//       setErro(null);
+//     } catch (error) {
+//       console.error('Erro ao buscar notas fiscais:', error);
+//       setErro('Não foi possível carregar a lista de notas fiscais.');
+//     } finally {
+//       setCarregando(false);
+//     }
+//   };
+
+//   const selecionarTodasPendentes = (e) => {
+//     if (e.target.checked) {
+//       const idsPendentes = notasFiltradas
+//         .filter(n => Number(n.status) === 0)
+//         .map(n => n.id);
+//       setNotasSelecionadasLote(idsPendentes);
+//     } else {
+//       setNotasSelecionadasLote([]);
+//     }
+//   };
+
+//   const toggleSelecionarNota = (id) => {
+//     setNotasSelecionadasLote(prev => 
+//       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+//     );
+//   };
+
+//   const aprovarSelecionadasEmLote = async () => {
+//     if (notasSelecionadasLote.length === 0) return;
+
+//     const confirmou = window.confirm(`Deseja realmente aprovar as ${notasSelecionadasLote.length} notas selecionadas?`);
+//     if (!confirmou) return;
+
+//     try {
+//       setProcessando(true);
+//       await Promise.all(
+//         notasSelecionadasLote.map(async (idNota) => {
+//           const payloadAprovacao = {
+//             decisao: 1,
+//             observacao: 'Aprovação em lote',
+//             nota: idNota,
+//             usuario: usuarioId,
+//           };
+//           await axios.post(`${API_URL}/aprovacoes`, payloadAprovacao, config);
+//           await axios.put(`${API_URL}/notas/${idNota}`, { status: 1 }, config);
+//         })
+//       );
+
+//       alert('Notas selecionadas aprovadas com sucesso!');
+//       setNotasSelecionadasLote([]);
+//       carregarNotas();
+//     } catch (error) {
+//       console.error('Erro ao aprovar em lote:', error);
+//       alert('Ocorreu um erro ao processar a aprovação em lote.');
+//     } finally {
+//       setProcessando(false);
+//     }
+//   };
+
+//   const abrirModalAcao = (nota, acao) => {
+//     setNotaSelecionada(nota);
+//     setTipoAcao(acao);
+//     setMensagem('');
+//     setModalAberto(true);
+//   };
+
+//   const confirmarAcao = async (e) => {
+//     e.preventDefault(); 
+//     if (!notaSelecionada) return;
+
+//     try {
+//       setProcessando(true);
+//       const novoStatus = tipoAcao === 'aprovar' ? 1 : 2;
+
+//       const payloadAprovacao = {
+//         decisao: novoStatus,
+//         observacao: mensagem,
+//         nota: notaSelecionada.id,
+//         usuario: usuarioId,
+//       };
+//       await axios.post(`${API_URL}/aprovacoes`, payloadAprovacao, config);
+//       await axios.put(`${API_URL}/notas/${notaSelecionada.id}`, { status: novoStatus }, config);
+
+//       alert(`Nota fiscal ${tipoAcao === 'aprovar' ? 'aprovada' : 'reprovada'} com sucesso!`);
+//       setModalAberto(false);
+//       setNotaSelecionada(null);
+//       carregarNotas(); 
+//     } catch (error) {
+//       console.error('Erro completo da API:', error);
+//       if (error.response && error.response.data) {
+//         const msgServidor = error.response.data.message || error.response.data;
+//         alert(`O back-end recusou a alteração: ${JSON.stringify(msgServidor)}`);
+//       } else {
+//         alert(`Erro de rede: a rota PUT /notas/${notaSelecionada.id} falhou.`);
+//       }
+//     } finally {
+//       setProcessando(false);
+//     }
+//   };
+
+//   const abrirEdicao = (nota) => {
+//     setNotaEditando(nota);
+//     setFormEdicao({
+//       numero_nf: nota.numero_nf || '',
+//       data_vencimento: nota.data_vencimento ? String(nota.data_vencimento).slice(0, 10) : '',
+//       valor_total: nota.valor_total ?? '',
+//       quant_parcelas: nota.quant_parcelas || 1,
+//     });
+//     setArquivoEdicao(null);
+//   };
+
+//   const handleEdicaoChange = (e) => {
+//     const { name, value } = e.target;
+//     setFormEdicao(prev => ({ ...prev, [name]: value }));
+//   };
+
+//   const salvarEdicao = async (e) => {
+//     e.preventDefault();
+//     if (!notaEditando) return;
+
+//     try {
+//       setSalvandoEdicao(true);
+//       const payload = {
+//         numero_nf: String(formEdicao.numero_nf),
+//         data_vencimento: formEdicao.data_vencimento || null,
+//         valor_total: Number(formEdicao.valor_total),
+//         quant_parcelas: Number(formEdicao.quant_parcelas),
+//       };
+
+//       await axios.put(`${API_URL}/notas/${notaEditando.id}`, payload, config);
+
+//       if (arquivoEdicao) {
+//         const formData = new FormData();
+//         formData.append('file', arquivoEdicao);
+//         await axios.put(`${API_URL}/notas/${notaEditando.id}/upload-pdf`, formData, config);
+//       }
+
+//       alert('Nota atualizada com sucesso!');
+//       setNotaEditando(null);
+//       setArquivoEdicao(null);
+//       carregarNotas(); 
+//     } catch (error) {
+//       console.error('Erro ao atualizar nota:', error);
+//       const msg = error.response?.data?.message;
+//       alert('Erro ao atualizar: ' + (msg ? JSON.stringify(msg) : 'verifique os dados e o arquivo.'));
+//     } finally {
+//       setSalvandoEdicao(false);
+//     }
+//   };
+
+//   const notasBaseResumo = obraIdFiltro 
+//     ? notas.filter(n => String(n.obraId || n.obra?.id) === String(obraIdFiltro))
+//     : notas;
+
+//   const totalDecidir = notasBaseResumo.filter(n => Number(n.status) === 0).length;
+//   const totalAprovadas = notasBaseResumo.filter(n => Number(n.status) === 1).length;
+//   const totalLancado = notasBaseResumo.length;
+
+//   const nomeFornecedor = (f) => {
+//     if (!f) return '';
+//     if (typeof f === 'string') return f;
+//     const nome = f.razao_social || f.nome_fantasia || f.nome || f.fornecedor;
+//     if (typeof nome === 'string') return nome;
+//     const primeiroTexto = Object.values(f).find(v => typeof v === 'string' && v.trim() !== '');
+//     return primeiroTexto || '';
+//   };
+
+//   const obraAtualObj = notas.find(n => String(n.obraId || n.obra?.id) === String(obraIdFiltro))?.obra;
+//   const nomeObraFiltrada = obraAtualObj?.nome_obra || obraAtualObj?.nome || `Obra #${obraIdFiltro}`;
+
+//   const notasFiltradas = notas.filter(n => {
+//     if (obraIdFiltro) {
+//       const idNotaObra = String(n.obraId || n.obra?.id || '');
+//       if (idNotaObra !== String(obraIdFiltro)) return false;
+//     }
+
+//     const termo = busca.toLowerCase();
+//     const numero = String(n.numero_nf || '').toLowerCase();
+//     const fornecedor = nomeFornecedor(n.fornecedor).toLowerCase();
+//     const matchTexto = numero.includes(termo) || fornecedor.includes(termo);
+
+//     const matchStatus =
+//       filtroStatus === 'todas' ? true :
+//       filtroStatus === 'decidir' ? Number(n.status) === 0 :
+//       filtroStatus === 'aprovadas' ? Number(n.status) === 1 :
+//       filtroStatus === 'reprovadas' ? Number(n.status) === 2 : true;
+
+//     const matchVencimento = filtroVencimento ? n.data_vencimento?.includes(filtroVencimento) : true;
+
+//     return matchTexto && matchStatus && matchVencimento;
+//   });
+
+//   const formatarMoeda = (valor) => {
+//     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
+//   };
+
+//   const renderVencimento = (dataStr, status) => {
+//     if (!dataStr) return '-';
+//     const dataVenc = new Date(dataStr);
+//     const hoje = new Date();
+//     hoje.setHours(0, 0, 0, 0);
+
+//     const diffDias = Math.ceil((dataVenc - hoje) / (1000 * 60 * 60 * 24));
+//     const dataFormatada = dataVenc.toLocaleDateString('pt-BR');
+
+//     if (Number(status) === 0) {
+//       if (diffDias < 0) {
+//         return (
+//           <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-red-50 text-red-700 border border-red-200" title="Vencido!">
+//             {dataFormatada}
+//           </span>
+//         );
+//       } else if (diffDias <= 7) {
+//         return (
+//           <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200" title="Vence em breve!">
+//             {dataFormatada}
+//           </span>
+//         );
+//       }
+//     }
+
+//     return <span className="text-hidrotec-4">{dataFormatada}</span>;
+//   };
+
+//   const renderStatus = (status) => {
+//     switch (Number(status)) {
+//       case 1:
+//         return (
+//           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-green-50 text-green-600">
+//             <CheckCircle size={12} /> Aprovada
+//           </span>
+//         );
+//       case 2:
+//         return (
+//           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-red-50 text-red-600">
+//             <XCircle size={12} /> Reprovada
+//           </span>
+//         );
+//       default:
+//         return (
+//           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-amber-50 text-amber-600">
+//             <Clock size={12} /> Pendente
+//           </span>
+//         );
+//     }
+//   };
+
+//   const inputCls = 'w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 focus:ring-1 focus:ring-hidrotec-2 transition-all text-hidrotec-3 bg-white';
+//   const labelCls = 'block text-xs font-bold text-hidrotec-4 uppercase tracking-wider mb-2';
+
+//   return (
+//     <div className="max-w-6xl w-full mx-auto font-body pb-12">
+
+//       <header className="mb-6">
+//         <h1 className="text-3xl font-display font-semibold text-hidrotec-3 mb-1">
+//           Notas Fiscais
+//         </h1>
+//         <p className="text-sm text-hidrotec-4">
+//           Listagem e gerenciamento de notas fiscais
+//         </p>
+//       </header>
+
+//       {obraIdFiltro && (
+//         <div className="mb-6 bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-center justify-between gap-4 shadow-sm">
+//           <div className="flex items-center gap-3">
+//             <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-700 shrink-0">
+//               <Building2 size={20} />
+//             </div>
+//             <div>
+//               <p className="text-xs font-bold text-blue-600 uppercase tracking-wider">Filtrando por Obra</p>
+//               <p className="text-sm font-semibold text-blue-900">{nomeObraFiltrada}</p>
+//             </div>
+//           </div>
+//           <button
+//             onClick={() => setSearchParams({})}
+//             className="px-4 py-2 bg-white border border-blue-200 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl transition-colors shadow-sm"
+//           >
+//             Mostrar Todas as Notas
+//           </button>
+//         </div>
+//       )}
+
+//       <div className="mb-8">
+//         <h2 className="text-2xl font-display font-bold text-hidrotec-3 mb-1">
+//           Olá, {nome}! {saudacao}.
+//         </h2>
+//         <p className="text-sm text-hidrotec-4 mb-6">
+//           Aqui está o resumo das suas notas fiscais e aprovações pendentes.
+//         </p>
+
+//         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+//           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center gap-4">
+//             <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
+//               <Clock size={24} />
+//             </div>
+//             <div>
+//               <p className="text-[10px] font-bold uppercase tracking-widest text-hidrotec-4">A DECIDIR</p>
+//               <p className="text-3xl font-display font-bold text-hidrotec-3">{totalDecidir}</p>
+//             </div>
+//           </div>
+
+//           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center gap-4">
+//             <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center text-green-600 shrink-0">
+//               <CheckCircle size={24} />
+//             </div>
+//             <div>
+//               <p className="text-[10px] font-bold uppercase tracking-widest text-hidrotec-4">APROVADAS</p>
+//               <p className="text-3xl font-display font-bold text-hidrotec-3">{totalAprovadas}</p>
+//             </div>
+//           </div>
+
+//           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center gap-4">
+//             <div className="w-12 h-12 rounded-xl bg-extra flex items-center justify-center text-hidrotec-1 shrink-0">
+//               <FileText size={24} />
+//             </div>
+//             <div>
+//               <p className="text-[10px] font-bold uppercase tracking-widest text-hidrotec-4">TOTAL LANÇADO</p>
+//               <p className="text-3xl font-display font-bold text-hidrotec-3">{totalLancado}</p>
+//             </div>
+//           </div>
+//         </div>
+//       </div>
+
+//       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+//         <div className="flex items-center gap-2 bg-white border border-slate-200 p-1.5 rounded-2xl shadow-sm">
+//           <button
+//             onClick={() => setFiltroStatus('todas')}
+//             className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all ${
+//               filtroStatus === 'todas' ? 'bg-hidrotec-3 text-white shadow-sm' : 'text-hidrotec-4 hover:text-hidrotec-3'
+//             }`}
+//           >
+//             Todas
+//           </button>
+//           <button
+//             onClick={() => setFiltroStatus('decidir')}
+//             className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all ${
+//               filtroStatus === 'decidir' ? 'bg-amber-500 text-white shadow-sm' : 'text-hidrotec-4 hover:text-hidrotec-3'
+//             }`}
+//           >
+//             A Decidir
+//           </button>
+//           <button
+//             onClick={() => setFiltroStatus('aprovadas')}
+//             className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all ${
+//               filtroStatus === 'aprovadas' ? 'bg-green-600 text-white shadow-sm' : 'text-hidrotec-4 hover:text-hidrotec-3'
+//             }`}
+//           >
+//             Aprovadas
+//           </button>
+//           <button
+//             onClick={() => setFiltroStatus('reprovadas')}
+//             className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all ${
+//               filtroStatus === 'reprovadas' ? 'bg-red-600 text-white shadow-sm' : 'text-hidrotec-4 hover:text-hidrotec-3'
+//             }`}
+//           >
+//             Reprovadas
+//           </button>
+//         </div>
+
+//         <Link
+//           to="/notas/nova"
+//           className="bg-hidrotec-1 hover:bg-hidrotec-2 text-white px-5 py-2.5 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2 shadow-sm"
+//         >
+//           <Plus size={18} />
+//           Nova Nota
+//         </Link>
+//       </div>
+
+//       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm mb-6 flex flex-col md:flex-row items-center gap-4">
+//         <div className="flex items-center gap-2 text-hidrotec-4 font-bold text-xs uppercase tracking-wider shrink-0">
+//           <Filter size={16} /> Filtros:
+//         </div>
+
+//         <div className="relative flex-1 w-full">
+//           <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+//           <input
+//             type="text"
+//             placeholder="Buscar NF ou fornecedor..."
+//             value={busca}
+//             onChange={(e) => setBusca(e.target.value)}
+//             className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 bg-white"
+//           />
+//         </div>
+
+//         <div className="flex items-center gap-2 w-full md:w-auto">
+//           <span className="text-xs font-bold text-hidrotec-4 whitespace-nowrap">Vencimento:</span>
+//           <input
+//             type="date"
+//             value={filtroVencimento}
+//             onChange={(e) => setFiltroVencimento(e.target.value)}
+//             className="px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-hidrotec-2 bg-white text-hidrotec-3"
+//           />
+//         </div>
+
+//         <button
+//           onClick={() => { setBusca(''); setFiltroStatus('todas'); setFiltroVencimento(''); setSearchParams({}); }}
+//           className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-hidrotec-3 border border-slate-200 rounded-xl flex items-center gap-1.5 transition-colors whitespace-nowrap"
+//         >
+//           <RotateCcw size={14} /> Limpar Filtros
+//         </button>
+//       </div>
+
+//       {podeAvaliar && notasSelecionadasLote.length > 0 && (
+//         <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-2xl p-3 px-5 flex items-center justify-between gap-4 shadow-sm">
+//           <div className="flex items-center gap-2 text-emerald-900 text-sm font-semibold">
+//             <CheckCircle className="w-5 h-5 text-emerald-600" />
+//             <span><strong>{notasSelecionadasLote.length}</strong> nota(s) pendente(s) selecionada(s).</span>
+//           </div>
+//           <button
+//             onClick={aprovarSelecionadasEmLote}
+//             disabled={processando}
+//             className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-2 disabled:opacity-50"
+//           >
+//             {processando ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+//             Aprovar Notas Selecionadas
+//           </button>
+//         </div>
+//       )}
+
+//       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+//         <div className="overflow-x-auto min-h-[300px]">
+//           {carregando ? (
+//             <div className="flex flex-col items-center justify-center h-64 text-hidrotec-1">
+//               <Loader2 className="w-8 h-8 animate-spin mb-4" />
+//               <p className="text-sm font-medium text-hidrotec-4">A carregar notas fiscais...</p>
+//             </div>
+//           ) : erro ? (
+//             <div className="flex items-center justify-center h-64 text-red-500 font-medium bg-red-50/50">
+//               <AlertCircle className="w-5 h-5 mr-2" />
+//               {erro}
+//             </div>
+//           ) : notasFiltradas.length === 0 ? (
+//             <div className="flex flex-col items-center justify-center h-64 text-hidrotec-4">
+//               <FileText className="w-12 h-12 mb-3 text-slate-300" strokeWidth={1.5} />
+//               <p className="font-medium mb-1">Nenhuma nota fiscal encontrada.</p>
+//               <p className="text-sm">Tente ajustar os filtros ou clique em "Nova Nota".</p>
+//             </div>
+//           ) : (
+//             <table className="w-full text-left border-collapse">
+//               <thead>
+//                 <tr className="border-b border-slate-100 text-[10px] uppercase tracking-wider text-hidrotec-4 bg-slate-50/50">
+//                   {podeAvaliar && (
+//                     <th className="px-3 py-3 w-10 text-center">
+//                       <input
+//                         type="checkbox"
+//                         onChange={selecionarTodasPendentes}
+//                         checked={
+//                           notasFiltradas.filter(n => Number(n.status) === 0).length > 0 &&
+//                           notasFiltradas.filter(n => Number(n.status) === 0).every(n => notasSelecionadasLote.includes(n.id))
+//                         }
+//                         className="rounded border-slate-300 text-hidrotec-1 focus:ring-hidrotec-1 w-4 h-4 cursor-pointer"
+//                         title="Selecionar todas as pendentes visíveis"
+//                       />
+//                     </th>
+//                   )}
+//                   <th className="px-3 py-3 font-semibold">NF</th>
+//                   <th className="px-3 py-3 font-semibold">Fornecedor</th>
+//                   <th className="px-3 py-3 font-semibold">Obra</th>
+//                   <th className="px-3 py-3 font-semibold">Vencimento</th>
+//                   <th className="px-3 py-3 font-semibold">Valor (R$)</th>
+//                   <th className="px-3 py-3 font-semibold text-center">Status</th>
+//                   <th className="px-3 py-3 font-semibold text-center">PDF</th>
+//                   <th className="px-3 py-3 font-semibold text-right">Gerenciar</th>
+//                 </tr>
+//               </thead>
+//               <tbody className="divide-y divide-slate-50">
+//                 {notasFiltradas.map((nota) => {
+//                   const ehPendente = Number(nota.status) === 0;
+//                   const estaSelecionada = notasSelecionadasLote.includes(nota.id);
+
+//                   return (
+//                     <tr key={nota.id} className="hover:bg-slate-50/50 transition-colors group text-sm">
+//                       {podeAvaliar && (
+//                         <td className="px-3 py-2.5 text-center">
+//                           {ehPendente && (
+//                             <input
+//                               type="checkbox"
+//                               checked={estaSelecionada}
+//                               onChange={() => toggleSelecionarNota(nota.id)}
+//                               className="rounded border-slate-300 text-hidrotec-1 focus:ring-hidrotec-1 w-4 h-4 cursor-pointer"
+//                             />
+//                           )}
+//                         </td>
+//                       )}
+                      
+//                       {/* Número da NF e o botão de edição (lápis) ao lado */}
+//                       <td className="px-3 py-2.5 font-bold text-hidrotec-3 whitespace-nowrap">
+//                         <div className="flex items-center gap-2">
+//                           <span>#{nota.numero_nf}</span>
+//                           {podeEditar && (
+//                             <button
+//                               onClick={() => abrirEdicao(nota)}
+//                               className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-hidrotec-3 transition-colors"
+//                               title="Editar nota"
+//                             >
+//                               <Pencil className="w-3 h-3" />
+//                             </button>
+//                           )}
+//                         </div>
+//                       </td>
+
+//                       <td className="px-3 py-2.5 text-hidrotec-4 truncate max-w-[150px]" title={nomeFornecedor(nota.fornecedor)}>
+//                         {nomeFornecedor(nota.fornecedor) || '-'}
+//                       </td>
+//                       <td className="px-3 py-2.5 font-medium text-hidrotec-3 truncate max-w-[160px]" title={nota.obra?.nome_obra || nota.obra?.nome}>
+//                         {nota.obra?.nome_obra || nota.obra?.nome || '-'}
+//                       </td>
+//                       <td className="px-3 py-2.5">
+//                         {renderVencimento(nota.data_vencimento, nota.status)}
+//                       </td>
+//                       <td className="px-3 py-2.5 font-bold text-hidrotec-3 whitespace-nowrap">
+//                         {formatarMoeda(nota.valor_total)}
+//                       </td>
+//                       <td className="px-3 py-2.5 text-center">
+//                         <div className="flex flex-col items-center gap-0.5">
+//                           {renderStatus(nota.status)}
+//                           {nota.parecer && (
+//                             <span className="text-[10px] text-slate-500 italic max-w-[180px] truncate flex items-center gap-1" title={nota.parecer}>
+//                               <MessageSquare size={10} className="shrink-0 text-hidrotec-1" />
+//                               {nota.parecer}
+//                             </span>
+//                           )}
+//                         </div>
+//                       </td>
+//                       <td className="px-3 py-2.5 text-center">
+//                         <div className="flex items-center justify-center">
+//                           {nota.tem_anexo && nota.link_pdf ? (
+//                             <button
+//                               onClick={() => setNotaPdf(nota)}
+//                               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 text-xs font-bold transition-colors"
+//                               title="Visualizar PDF"
+//                             >
+//                               <Eye className="w-3.5 h-3.5" />
+//                               PDF
+//                             </button>
+//                           ) : (
+//                             <span title="Sem anexo" className="inline-flex items-center text-xs text-slate-300">
+//                               <Paperclip className="w-3.5 h-3.5" />
+//                             </span>
+//                           )}
+//                         </div>
+//                       </td>
+
+//                       {/* Coluna de Gerenciar (Apenas Aprovar/Reprovar se pendente) */}
+//                       <td className="px-3 py-2.5 text-right whitespace-nowrap">
+//                         <div className="flex items-center justify-end gap-1.5">
+//                           {podeAvaliar && ehPendente && (
+//                             <>
+//                               <button
+//                                 onClick={() => abrirModalAcao(nota, 'aprovar')}
+//                                 disabled={processando}
+//                                 className="px-2.5 py-1 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 text-[11px] font-bold uppercase transition-colors"
+//                                 title="Aprovar nota"
+//                               >
+//                                 Aprovar
+//                               </button>
+//                               <button
+//                                 onClick={() => abrirModalAcao(nota, 'reprovar')}
+//                                 disabled={processando}
+//                                 className="px-2.5 py-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 text-[11px] font-bold uppercase transition-colors"
+//                                 title="Reprovar nota"
+//                               >
+//                                 Reprovar
+//                               </button>
+//                             </>
+//                           )}
+//                         </div>
+//                       </td>
+//                     </tr>
+//                   );
+//                 })}
+//               </tbody>
+//             </table>
+//           )}
+//         </div>
+//       </div>
+
+//       {notaEditando && (
+//         <div className="fixed inset-0 w-screen h-screen bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-[1000] p-4 overflow-y-auto">
+//           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden my-8">
+//             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+//               <h3 className="font-display font-bold text-lg text-hidrotec-3 flex items-center gap-2">
+//                 <Pencil className="w-5 h-5 text-hidrotec-1" />
+//                 Editar Nota Fiscal #{notaEditando.numero_nf}
+//               </h3>
+//               <button onClick={() => setNotaEditando(null)} className="text-slate-400 hover:text-hidrotec-3 transition-colors">
+//                 <X className="w-5 h-5" />
+//               </button>
+//             </div>
+
+//             <form onSubmit={salvarEdicao} className="p-6">
+//               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+//                 <div>
+//                   <label className={labelCls}>Número da NF *</label>
+//                   <input type="text" name="numero_nf" value={formEdicao.numero_nf} onChange={handleEdicaoChange} className={inputCls} required />
+//                 </div>
+//                 <div>
+//                   <label className={labelCls}>Vencimento</label>
+//                   <input type="date" name="data_vencimento" value={formEdicao.data_vencimento} onChange={handleEdicaoChange} className={inputCls} />
+//                 </div>
+//                 <div>
+//                   <label className={labelCls}>Valor Total (R$)</label>
+//                   <input type="number" step="0.01" name="valor_total" value={formEdicao.valor_total} onChange={handleEdicaoChange} className={inputCls} />
+//                 </div>
+//                 <div>
+//                   <label className={labelCls}>Qtd. de Parcelas</label>
+//                   <input type="number" min="1" name="quant_parcelas" value={formEdicao.quant_parcelas} onChange={handleEdicaoChange} className={inputCls} />
+//                 </div>
+//               </div>
+
+//               <div className="mt-4 p-4 bg-slate-50/50 rounded-xl border border-slate-200 border-dashed">
+//                 <label className={labelCls}>Atualizar Arquivo PDF (opcional)</label>
+//                 <input
+//                   type="file"
+//                   accept="application/pdf"
+//                   onChange={(e) => setArquivoEdicao(e.target.files[0] || null)}
+//                   className="w-full text-sm text-slate-600 file:mr-4 file:px-4 file:py-2 file:rounded-lg file:border-0 file:text-xs file:font-bold file:uppercase file:bg-extra file:text-hidrotec-1 cursor-pointer"
+//                 />
+//               </div>
+
+//               <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+//                 <button
+//                   type="button"
+//                   onClick={() => setNotaEditando(null)}
+//                   className="px-5 py-2.5 text-sm font-medium rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors"
+//                 >
+//                   Cancelar
+//                 </button>
+//                 <button
+//                   type="submit"
+//                   disabled={salvandoEdicao}
+//                   className="px-5 py-2.5 text-sm font-bold rounded-xl bg-hidrotec-1 hover:bg-hidrotec-2 text-white transition-all shadow-sm flex items-center gap-2 disabled:opacity-70"
+//                 >
+//                   {salvandoEdicao ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+//                   Salvar Alterações
+//                 </button>
+//               </div>
+//             </form>
+//           </div>
+//         </div>
+//       )}
+
+//       {notaPdf && (
+//         <div className="fixed inset-0 w-screen h-screen bg-slate-900/70 backdrop-blur-sm flex justify-center items-center z-[900] p-4">
+//           <div className="bg-white rounded-2xl w-full max-w-5xl h-[90vh] shadow-2xl overflow-hidden flex flex-col">
+//             <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-100 shrink-0">
+//               <h3 className="font-display font-bold text-lg text-hidrotec-3 truncate">
+//                 Nota Fiscal #{notaPdf.numero_nf}
+//               </h3>
+//               <div className="flex items-center gap-4">
+//                 <a
+//                   href={notaPdf.link_pdf}
+//                   target="_blank"
+//                   rel="noopener noreferrer"
+//                   className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors whitespace-nowrap"
+//                 >
+//                   <ExternalLink size={14} /> Abrir em nova aba
+//                 </a>
+//                 <button onClick={() => setNotaPdf(null)} className="text-slate-400 hover:text-hidrotec-3 transition-colors">
+//                   <X className="w-5 h-5" />
+//                 </button>
+//               </div>
+//             </div>
+
+//             <div className="flex-1 bg-slate-100">
+//               <iframe
+//                 src={`${notaPdf.link_pdf}#toolbar=0`}
+//                 title={`PDF da nota ${notaPdf.numero_nf}`}
+//                 className="w-full h-full border-0"
+//               />
+//             </div>
+
+//             {podeAvaliar && Number(notaPdf.status) === 0 && (
+//               <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 shrink-0">
+//                 <button
+//                   onClick={() => { const nota = notaPdf; setNotaPdf(null); abrirModalAcao(nota, 'reprovar'); }}
+//                   className="px-5 py-2.5 text-sm font-bold rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+//                 >
+//                   Reprovar
+//                 </button>
+//                 <button
+//                   onClick={() => { const nota = notaPdf; setNotaPdf(null); abrirModalAcao(nota, 'aprovar'); }}
+//                   className="px-5 py-2.5 text-sm font-bold rounded-xl bg-green-600 text-white hover:bg-green-700 transition-colors"
+//                 >
+//                   Aprovar
+//                 </button>
+//               </div>
+//             )}
+//           </div>
+//         </div>
+//       )}
+
+//       {modalAberto && (
+//         <div className="fixed inset-0 w-screen h-screen bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-[1000] p-4 overflow-y-auto">
+//           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden my-8">
+//             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+//               <h3 className={`font-display font-bold text-lg flex items-center gap-2 ${tipoAcao === 'aprovar' ? 'text-green-600' : 'text-red-600'}`}>
+//                 {tipoAcao === 'aprovar' ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+//                 {tipoAcao === 'aprovar' ? 'Aprovar' : 'Reprovar'} Nota Fiscal #{notaSelecionada?.numero_nf}
+//               </h3>
+//               <button onClick={() => setModalAberto(false)} className="text-slate-400 hover:text-hidrotec-3 transition-colors">
+//                 <X className="w-5 h-5" />
+//               </button>
+//             </div>
+
+//             <form onSubmit={confirmarAcao} className="p-6">
+//               <div className="space-y-4">
+//                 <div>
+//                   <label className={labelCls}>
+//                     Parecer do Diretor {tipoAcao === 'reprovar' ? '*' : '(Opcional)'}
+//                   </label>
+//                   <textarea
+//                     rows="4"
+//                     value={mensagem}
+//                     onChange={(e) => setMensagem(e.target.value)}
+//                     className={`${inputCls} resize-none`}
+//                     placeholder={tipoAcao === 'aprovar' ? 'Adicione um parecer opcional para esta aprovação...' : 'Descreva o motivo da recusa ou observações para o lançador...'}
+//                     {...(tipoAcao === 'reprovar' ? { required: true } : {})}
+//                   />
+//                 </div>
+//               </div>
+
+//               <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+//                 <button
+//                   type="button"
+//                   onClick={() => setModalAberto(false)}
+//                   className="px-5 py-2.5 text-sm font-medium rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors"
+//                 >
+//                   Cancelar
+//                 </button>
+//                 <button
+//                   type="submit"
+//                   disabled={processando}
+//                   className={`px-5 py-2.5 text-sm font-bold rounded-xl text-white transition-all shadow-sm flex items-center gap-2 disabled:opacity-70 ${
+//                     tipoAcao === 'aprovar' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+//                   }`}
+//                 >
+//                   {processando ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+//                   Confirmar {tipoAcao === 'aprovar' ? 'Aprovação' : 'Reprovação'}
+//                 </button>
+//               </div>
+//             </form>
+//           </div>
+//         </div>
+//       )}
+
+//     </div>
+//   );
+// }
