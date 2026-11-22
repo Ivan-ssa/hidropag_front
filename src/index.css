@@ -2,7 +2,7 @@
 @import "tailwindcss";
 
 @theme {
-  /* Paleta HidroPag — tons de água profunda + acento ciano (fluxo hídrico) */
+  /* Paleta HidroPag original */
   --color-ink-900: #0a2432;
   --color-ink-800: #0d2b3a;
   --color-ink-700: #123a4d;
@@ -26,13 +26,21 @@
 
   --font-display: "Sora", system-ui, sans-serif;
   --font-body: "Inter", system-ui, sans-serif;
+
+  /* NOVA PALETA OFICIAL HIDROTEC */
+  --color-extra: #CCFFFF;
+  --color-hidrotec-1: #3A6A89;
+  --color-hidrotec-2: #66C2C7;
+  --color-hidrotec-3: #666666;
+  --color-hidrotec-4: #939393;
 }
 
 body {
   margin: 0;
   font-family: var(--font-body);
   background-color: var(--color-surface);
-  color: #1e293b;
+  /* Já atualizado para usar o cinza principal da Hidrotec no texto padrão */
+  color: var(--color-hidrotec-3); 
 }
 
 h1, h2, h3, h4 {

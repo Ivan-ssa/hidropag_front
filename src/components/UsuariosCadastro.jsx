@@ -55,18 +55,17 @@ function UsuariosCadastro() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!usuario.nome || !usuario.email || !usuario.senha || !usuario.perfilId) {
+    if (!usuario.nome.trim() || !usuario.email.trim() || !usuario.senha || !usuario.perfilId) {
       alert("Preencha todos os campos obrigatórios (*)");
       return;
     }
 
     const payload = {
-      nome: usuario.nome,
-      email: usuario.email,
+      nome: usuario.nome.trim(),
+      email: usuario.email.trim(),
       senha: usuario.senha,
-      ativo: true,
-      perfil: { id: usuario.perfilId },
-      filial: usuario.filialId ? { id: usuario.filialId } : null
+      perfil: { id: Number(usuario.perfilId) },
+      ...(usuario.filialId ? { filial: { id: usuario.filialId } } : {}),
     };
 
     try {
@@ -74,12 +73,13 @@ function UsuariosCadastro() {
       alert("Usuário cadastrado com sucesso!");
       navigate("/usuarios");
     } catch (erro) {
-      console.error(erro);
+      console.error("Erro detalhado:", erro.response?.data || erro);
       const msg = erro.response?.data?.message || "Erro ao cadastrar usuário.";
-      alert(typeof msg === 'string' ? msg : JSON.stringify(msg));
+      alert(typeof msg === "string" ? msg : JSON.stringify(msg));
     }
   };
 
+  
   const inputCls = "w-full px-3 py-2.5 mt-1 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-flow-400 focus:border-transparent";
   const labelCls = "text-sm font-semibold text-slate-700 block";
 
