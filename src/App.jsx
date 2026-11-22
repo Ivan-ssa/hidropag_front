@@ -29,7 +29,7 @@ import Configuracoes from './components/Configuracoes';
 import Fornecedores from './components/Fornecedores'; 
 import Clientes from './components/Clientes';
 import Relatorio from './components/Relatorio'; // <-- 1. IMPORT DO RELATÓRIO ADICIONADO
-
+import ValidarAssinatura from './components/ValidarAssinatura';
 // Interceptor global: se o token vencer durante o uso e a API retornar 401, desloga na hora
 axios.interceptors.response.use(
   (response) => response,
@@ -155,6 +155,7 @@ function App() {
           <Route path="/relatorios" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><Relatorio /></PrivateRoute>} />
           
           <Route path="/clientes" element={<PrivateRoute allowedRoles={['root','gestor','lancador','leitor']}><Clientes /></PrivateRoute>} />
+          <Route path="/validar" element={<ValidarAssinatura/>} />
         </Route>
 
         {/* Qualquer rota inválida redireciona para / (que passa pelo RequireAuth e joga p/ /login se deslogado) */}
