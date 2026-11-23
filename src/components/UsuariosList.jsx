@@ -11,9 +11,11 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 // const API_URL = "http://localhost:3000";
 const SENHA_MIN = 6; 
 
-const authConfig = () => ({
-  headers: { Authorization: `Bearer ${localStorage.getItem("tokenHidropag")}` },
-});
+
+const authConfig = () => {
+  const token = localStorage.getItem("tokenHidropag") || sessionStorage.getItem("tokenHidropag");
+  return { headers: { Authorization: `Bearer ${token}` } };
+};
 
 const mensagemDeErro = (erro, padrao) => {
   if (!erro?.response) return "Não foi possível se comunicar com o servidor. Verifique a conexão.";
@@ -152,12 +154,16 @@ function UsuariosList() {
       return;
     }
 
+        
+
     const dados = {
-      nome, email, ativo: usuarioEditando.ativo,
-      perfil: { id: usuarioEditando.perfilId },
+      nome,
+      email,
+      ativo: usuarioEditando.ativo,
+      perfil: { id: Number(usuarioEditando.perfilId) },
       filial: usuarioEditando.filialId ? { id: usuarioEditando.filialId } : null,
     };
-    
+
     if (novaSenha) dados.senha = novaSenha;
 
     setSalvando(true);

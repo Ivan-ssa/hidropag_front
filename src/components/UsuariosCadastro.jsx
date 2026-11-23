@@ -64,7 +64,7 @@ function UsuariosCadastro() {
       nome: usuario.nome.trim(),
       email: usuario.email.trim(),
       senha: usuario.senha,
-      perfil: { id: Number(usuario.perfilId) },
+      perfil: { id: usuario.perfilId },
       ...(usuario.filialId ? { filial: { id: usuario.filialId } } : {}),
     };
 
